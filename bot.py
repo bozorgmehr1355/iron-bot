@@ -1,9 +1,20 @@
 import requests
+import os
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
 
 TOKEN = "8742538592:AAHBoNMe33Wvsin73049sdi6htK-f3hEfUU"
 CHAT_ID = 715854466
+
+def get_usd_free():
+    try:
+        url = "https://api.tgju.org/v1/market/indicator/summary-table-data/price_dollar_rl"
+        r = requests.get(url, timeout=10)
+        data = r.json()
+        price = data["data"][0][1]
+        return price
+    except:
+        return None
 
 def get_currency():
     try:
@@ -14,34 +25,33 @@ def get_currency():
         result = {}
         result["EUR"] = round(rates.get("EUR", 0), 4)
         result["AED"] = round(rates.get("AED", 0), 4)
-        result["IRR"] = round(rates.get("IRR", 0), 0)
         return result
     except:
         return None
 
 def get_iron_price():
-    import os
-    API_KEY = os.environ.get("FRED_API_KEY", "")
-    print(f"API_KEY: {API_KEY}")
     try:
+        API_KEY = os.environ.get("FRED_API_KEY", "")
         url = f"https://api.stlouisfed.org/fred/series/observations?series_id=PIORECRUSDM&api_key={API_KEY}&sort_order=desc&limit=1&file_type=json"
         r = requests.get(url, timeout=10)
-        print(f"Response: {r.text}")
         data = r.json()
         price = data["observations"][0]["value"]
         return round(float(price), 2)
-    except Exception as e:
-        print(f"Error: {e}")
+    except:
         return None
 
 def build_report():
     currencies = get_currency()
     iron = get_iron_price()
+    usd = get_usd_free()
     msg = "--- Market Report ---\n\n"
+    if usd:
+        msg += f"USD (free market): {usd} Rials\n"
+    else:
+        msg += "USD (free market): N/A\n"
     if currencies:
         msg += f"USD/EUR: {currencies.get('EUR', 'N/A')}\n"
         msg += f"USD/AED: {currencies.get('AED', 'N/A')}\n"
-        msg += f"USD/IRR: {currencies.get('IRR', 'N/A')}\n"
     else:
         msg += "Error getting currency data\n"
     msg += "\n"
