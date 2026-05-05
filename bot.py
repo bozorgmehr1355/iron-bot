@@ -21,12 +21,13 @@ def get_currency():
 
 def get_iron_price():
     try:
-        API_KEY = "e6de2613ce5902f03d502dff62d5f83c"
-        url = f"https://api.metalpriceapi.com/v1/latest?api_key={API_KEY}&base=USD&currencies=IRON"
+        import os
+        API_KEY = os.environ.get("FRED_API_KEY", "")
+        url = f"https://api.stlouisfed.org/fred/series/observations?series_id=PIORECRUSDM&api_key={API_KEY}&sort_order=desc&limit=1&file_type=json"
         r = requests.get(url, timeout=10)
         data = r.json()
-        price = data["rates"]["IRON"]
-        return round(1 / price, 2)
+        price = data["observations"][0]["value"]
+        return float(price)
     except:
         return None
 
