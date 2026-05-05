@@ -31,9 +31,6 @@ def get_iron_price():
     except:
         return None
 
-    except:
-        return None
-
 def build_report():
     currencies = get_currency()
     iron = get_iron_price()
