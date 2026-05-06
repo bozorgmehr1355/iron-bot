@@ -4,8 +4,8 @@ def calculate_profit(tonnage):
     price = get_fe65()
     freight = 25
 
-    revenue = price  tonnage
-    cost = freight  tonnage
+    price  tonnage
+    freight  tonnage
     profit = revenue - cost
 
     return {
