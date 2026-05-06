@@ -152,10 +152,10 @@ t update.message.reply_text("Please enter a valid number")
         freight = data["freight"]
         port = data["port"]
 
-        revenue_usd = fob  t
-        purchase_cost = purchase  t
-        freight_cost = freight  t
-        port_cost = port  t
+        revenue_usd = fob * t
+        purchase_cost = purchase * t
+        freight_cost = freight * t
+        port_cost = port * t
         total_cost = purchase_cost + freight_cost + port_cost
         profit_usd = revenue_usd - total_cost
         profit_rials = profit_usd * rate
