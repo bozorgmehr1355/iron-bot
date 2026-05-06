@@ -35,10 +35,10 @@ async def profit_step(update, context):
         data["transport"] = float(text)
 
         t = data["tonnage"]
-        revenue = data["fob"]  t
-        freight = data["freight"]  t
-        port = data["port"]  t
-        transport = data["transport"]  t
+        revenue = data["fob"] * t
+        freight = data["freight"] * t
+        port = data["port"] * t
+        transport = data["transport"] * t
         total_cost = freight + port + transport
         profit = revenue - total_cost
 
