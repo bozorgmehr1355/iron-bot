@@ -1,186 +1,57 @@
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-from services.iron import get_iron_62, get_fe65
-from services.billet import get_billet_price
-from services.forex import get_usd_free
-from datetime import datetime
-
 user_data = {}
 
 async def profit_start(update, context):
     user_id = update.message.from_user.id
     user_data[user_id] = {}
-    keyboard = [
-        [InlineKeyboardButton("Iron Ore 62%", callback_data="prod_1"),
-         InlineKeyboardButton("Fe 65%", callback_data="prod_2")],
-        [InlineKeyboardButton("Pellet", callback_data="prod_3"),
-         InlineKeyboardButton("Billet", callback_data="prod_4")],
-        [InlineKeyboardButton("Custom price", callback_data="prod_5")]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text("Step 1/7: Select product:", reply_markup=reply_markup)
-
-async def profit_product_select(update, context):
-    query = update.callback_query
-    await query.answer()
-    user_id = query.from_user.id
-
-    if user_id not in user_data:
-        user_data[user_id] = {}
-
-    products = {
-        "prod_1": ("Iron Ore 62%", get_iron_62),
-        "prod_2": ("Fe 65% Concentrate", get_fe65),
-        "prod_3": ("Pellet", lambda: round(get_iron_62() + 15, 2)),
-        "prod_4": ("Billet", get_billet_price),
-        "prod_5": ("Custom", None)
-    }
-
-    name, fn = products[query.data]
-    user_data[user_id]["product"] = name
-    user_data[user_id]["price_fn"] = fn
-
-    await query.edit_message_text("Fetching market data...")
-
-    if fn:
-        price = fn()
-        user_data[user_id]["suggested_fob"] = price
-        await query.edit_message_text(
-            "Product: " + name + "\n"
-            "Current market price: $" + str(price) + "/ton\n\n"
-            "Step 2/7: Purchase price in Iran ($/ton)?\n"
-            "Example: 95"
-        )
-    else:
-        await query.edit_message_text(
-            "Step 2/7: Purchase price in Iran ($/ton)?\n"
-            "Example: 95"
-        )
+    await update.message.reply_text("Step 1/5: Tonnage (tons)?\nExample: 5000")
 
 async def profit_step(update, context):
     user_id = update.message.from_user.id
-    text = update.message.text.strip()
+    text = update.message.text
 
-    if user_id not in user_data or "product" not in user_data[user_id]:
+    if user_id not in user_data:
         return
 
     data = user_data[user_id]
 
-    if "purchase" not in data:
-        try:
-            data["purchase"] = float(text)
-        except Exception:
-            await update.message.reply_text("Please enter a valid number")
-            return
-        fn = data.get("price_fn")
-        if fn:
-            price = data.get("suggested_fob", fn())
-            await update.message.reply_text(
-                "Step 3/7: FOB selling price ($/ton)?\n"
-                "Current market: $" + str(price) + "/ton\n"
-                "Send 0 to use market price or enter custom:"
-            )
-        else:
-            await update.message.reply_text("Step 3/7: FOB selling price ($/ton)?")
+    if "tonnage" not in data:
+        data["tonnage"] = float(text)
+        await update.message.reply_text("Step 2/5: FOB Price ($/ton)?\nExample: 119.58")
 
     elif "fob" not in data:
-        try:
-            val = float(text)
-            if val == 0 and "suggested_fob" in data:
-                data["fob"] = data["suggested_fob"]
-            else:
-                data["fob"] = val
-        except Exception:
-            await update.message.reply_text("Please enter a valid number")
-            return
-        await update.message.reply_text("Fetching exchange rate...")
-        rate = get_usd_free()
-        if rate:
-            clean = rate.replace(",", "")
-            data["suggested_rate"] = clean
-            await update.message.reply_text(
-                "Step 4/7: Exchange rate (Rials/USD)?\n"
-                "Current rate: " + rate + "\n"
-                "Send 0 to use current rate or enter custom:"
-            )
-        else:
-            await update.message.reply_text(
-                "Step 4/7: Exchange rate (Rials/USD)?\n"
-                "Example: 1798800"
-            )
-
-    elif "rate" not in data:
-        try:
-            val = float(text)
-            if val == 0 and "suggested_rate" in data:
-                data["rate"] = float(data["suggested_rate"])
-            else:
-                data["rate"] = val
-        except Exception:
-            awai
-
-t update.message.reply_text("Please enter a valid number")
-            return
-        await update.message.reply_text("Step 5/7: Tonnage (tons)?\nExample: 5000")
-
-    elif "tonnage" not in data:
-        try:
-            data["tonnage"] = float(text)
-        except Exception:
-            await update.message.reply_text("Please enter a valid number")
-            return
-        await update.message.reply_text("Step 6/7: Freight cost ($/ton)?\nExample: 18")
+        data["fob"] = float(text)
+        await update.message.reply_text("Step 3/5: Freight cost ($/ton)?\nExample: 18")
 
     elif "freight" not in data:
-        try:
-            data["freight"] = float(text)
-        except Exception:
-            await update.message.reply_text("Please enter a valid number")
-            return
-        await update.message.reply_text("Step 7/7: Port and loading cost ($/ton)?\nExample: 4")
+        data["freight"] = float(text)
+        await update.message.reply_text("Step 4/5: Port and loading cost ($/ton)?\nExample: 4")
 
     elif "port" not in data:
-        try:
-            data["port"] = float(text)
-        except Exception:
-            await update.message.reply_text("Please enter a valid number")
-            return
+        data["port"] = float(text)
+        await update.message.reply_text("Step 5/5: Inland transport ($/ton)?\nExample: 3")
 
+    elif "transport" not in data:
+        data["transport"] = float(text)
         t = data["tonnage"]
-        purchase = data["purchase"]
-        fob = data["fob"]
-        rate = data["rate"]
-        freight = data["freight"]
-        port = data["port"]
-
-        revenue_usd = fob * t
-        purchase_cost = purchase * t
-        freight_cost = freight * t
-        port_cost = port * t
-        total_cost = purchase_cost + freight_cost + port_cost
-        profit_usd = revenue_usd - total_cost
-        profit_rials = profit_usd * rate
-
-        now = datetime.now().strftime("%b %d, %Y - %H:%M")
-
-        result = "Profit Calculation\n"
-        result += now + "\n"
-        result += "-------------------\n"
-        result += "Product: " + data["product"] + "\n"
-        result += "Tonnage: " + f"{t:,.0f}" + " tons\n"
-        result += "Purchase price: $" + str(purchase) + "/ton\n"
-        result += "FOB price: $" + str(fob) + "/ton\n"
-        result += "Exchange rate: " + f"{rate:,.0f}" + "\n"
-        result += "-------------------\n"
-        result += "Revenue: $" + f"{revenue_usd:,.0f}" + "\n"
-        result += "Purchase cost: $" + f"{purchase_cost:,.0f}" + "\n"
-        result += "Freight: $" + f"{freight_cost:,.0f}" + "\n"
-        result += "Port costs: $" + f"{port_cost:,.0f}" + "\n"
-        result += "Total Cost: $" + f"{total_cost:,.0f}" + "\n"
-        result += "-------------------\n"
-        result += "Net Profit (USD): $" + f"{profit_usd:,.0f}" + "\n"
-        result += "Net Profit (Rials): " + f"{profit_rials:,.0f}" + "\n"
-        result += "-------------------\n"
-
-        await update.message.reply_text(result)
+        revenue = data["fob"] * t
+        freight = data["freight"] * t
+        port = data["port"] * t
+        transport = data["transport"] * t
+        total_cost = freight + port + transport
+        profit = revenue - total_cost
+        await update.message.reply_text(
+            "Profit Calculation\n"
+            "-------------------\n"
+            f"Tonnage: {t:,.0f} tons\n"
+            f"FOB Price: ${data['fob']}/ton\n"
+            "-------------------\n"
+            f"Revenue: ${revenue:,.0f}\n"
+            f"Freight: ${freight:,.0f}\n"
+            f"Port costs: ${port:,.0f}\n"
+            f"Transport: ${transport:,.0f}\n"
+            f"Total Cost: ${total_cost:,.0f}\n"
+            "-------------------\n"
+            f"Net Profit: ${profit:,.0f}\n"
+        )
         del user_data[user_id]
 
