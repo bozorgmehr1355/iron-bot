@@ -177,7 +177,7 @@ async def cancel(update: Update, context):
 
 # ========== MAIN FUNCTION ==========
 def main():
-    TOKEN = "8742538592:AAHBoNMe33Wvsin73049sdi6htK-f3hEfUU"
+    TOKEN = "8742538592:AAGvBaJKdVgjZZSJXOnn4d49ehJTFAd2PA4"
 
     # Create application
     app = Application.builder().token(TOKEN).build()
