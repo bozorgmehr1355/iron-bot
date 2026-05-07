@@ -1,62 +1,31 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ConversationHandler, MessageHandler, filters
+from telegram.ext import ConversationHandler
 from datetime import datetime
 
-# States for ConversationHandler
+# States
 PRODUCT, PURCHASE, FOB, RATE, TONNAGE, FREIGHT, PORT = range(7)
 
-# Simple in-memory database
+# In-memory database
 user_data = {}
 
-# ========== /start command ==========
-async def start(update: Update, context):
+# ========== تابع شروع - مورد نیاز main.py ==========
+async def profit_start(update: Update, context):
+    """شروع فرآیند محاسبه سود - این تابع توسط main.py فراخوانی میشه"""
+    user_id = update.message.from_user.id
+    user_data[user_id] = {}
+    
     keyboard = [
-        [InlineKeyboardButton("Profit Calculation", callback_data="new_profit")],
-        [InlineKeyboardButton("Product Prices", callback_data="prices")],
-        [InlineKeyboardButton("Guide / Help", callback_data="help")]
+        [InlineKeyboardButton("Iron Ore 62%", callback_data="prod_1"),
+         InlineKeyboardButton("Fe 65%", callback_data="prod_2")],
+        [InlineKeyboardButton("Pellet", callback_data="prod_3"),
+         InlineKeyboardButton("Billet", callback_data="prod_4")],
+        [InlineKeyboardButton("Custom price", callback_data="prod_5")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text(
-        "Welcome to Ironston Bot!\n\n"
-        "Choose an option from the buttons below:",
-        reply_markup=reply_markup
-    )
+    await update.message.reply_text("Step 1/7: Select product:", reply_markup=reply_markup)
+    return PRODUCT
 
-# ========== Handle button clicks ==========
-async def button_handler(update: Update, context):
-    query = update.callback_query
-    await query.answer()
-
-    if query.data == "new_profit":
-        user_id = query.from_user.id
-        user_data[user_id] = {}
-        await query.message.reply_text("Step 1/7: Enter product name:\nExample: Iron Ore 62%, Fe 65%, Pellet, Billet")
-        return PRODUCT
-
-    elif query.data == "prices":
-        await query.message.reply_text(
-            "Current Iron Ore Prices:\n\n"
-            "Iron Ore 62%: $118.5/ton\n"
-            "Fe 65%: $135.2/ton\n"
-            "Pellet: $156.8/ton\n"
-            "Billet: $520/ton\n\n"
-            "Last update: Just now"
-        )
-        return ConversationHandler.END
-
-    elif query.data == "help":
-        await query.message.reply_text(
-            "Bot Guide:\n\n"
-            "1. Press 'Profit Calculation' to start\n"
-            "2. Answer questions step by step\n"
-            "3. Enter numbers when asked\n\n"
-            "Commands:\n"
-            "/start - Main menu\n"
-            "/cancel - Cancel current operation"
-        )
-        return ConversationHandler.END
-
-# ========== Profit calculation steps ==========
+# ========== Step functions ==========
 async def step1_product(update: Update, context):
     user_id = update.effective_user.id
     text = update.message.text
@@ -131,7 +100,6 @@ async def step7_port(update: Update, context):
     freight = data["freight"]
     port = data["port"]
 
-    # ✅ اصلاح شده: عملگر ضرب اضافه شد
     revenue_usd = fob * t
     purchase_cost = purchase * t
     freight_cost = freight * t
@@ -167,46 +135,34 @@ async def step7_port(update: Update, context):
     del user_data[user_id]
     return ConversationHandler.END
 
-# ========== Cancel operation ==========
-async def cancel(update: Update, context):
+# ========== تابع مرحله - مورد نیاز main.py ==========
+async def profit_step(update: Update, context):
+    """پردازش مرحله به مرحله - این تابع توسط main.py فراخوانی میشه"""
+    # این تابع به عنوان یک تابع wrapper عمل میکنه
+    # بسته به اینکه کاربر در چه مرحله‌ای هست، تابع مناسب رو صدا میزنه
     user_id = update.effective_user.id
-    if user_id in user_data:
-        del user_data[user_id]
-    await update.message.reply_text("Operation cancelled.\nPress /start to begin again.")
-    return ConversationHandler.END
-
-# ========== MAIN FUNCTION ==========
-def main():
-    TOKEN = "8742538592:AAGvBaJKdVgjZZSJXOnn4d49ehJTFAd2PA4"
-
-    # Create application
-    app = Application.builder().token(TOKEN).build()
-
-    # Create conversation handler for profit calculation
-    conv_handler = ConversationHandler(
-        entry_points=[CallbackQueryHandler(button_handler, pattern="^new_profit$")],
-        states={
-            PRODUCT: [MessageHandler(filters.TEXT & ~filters.COMMAND, step1_product)],
-            PURCHASE: [MessageHandler(filters.TEXT & ~filters.COMMAND, step2_purchase)],
-            FOB: [MessageHandler(filters.TEXT & ~filters.COMMAND, step3_fob)],
-            RATE: [MessageHandler(filters.TEXT & ~filters.COMMAND, step4_rate)],
-            TONNAGE: [MessageHandler(filters.TEXT & ~filters.COMMAND, step5_tonnage)],
-            FREIGHT: [MessageHandler(filters.TEXT & ~filters.COMMAND, step6_freight)],
-            PORT: [MessageHandler(filters.TEXT & ~filters.COMMAND, step7_port)],
-        },
-        fallbacks=[CommandHandler("cancel", cancel)],
-    )
-
-    # Add handlers
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CallbackQueryHandler(button_handler, pattern="^(new_profit|prices|help)$"))
-    app.add_handler(conv_handler)
-    app.add_handler(CommandHandler("cancel", cancel))
-
-    # Start the bot
-    print("Bot is running...")
-    app.run_polling(allowed_updates=Update.ALL_TYPES)
-
-# ✅ اصلاح شده: دو تا زیرخط
-if __name__ == "__main__":
-    main()
+    
+    if user_id not in user_data:
+        await update.message.reply_text("Please start over with /start")
+        return ConversationHandler.END
+    
+    data = user_data[user_id]
+    
+    # تشخیص مرحله فعلی بر اساس داده‌های موجود
+    if "product" not in data:
+        return await step1_product(update, context)
+    elif "purchase" not in data:
+        return await step2_purchase(update, context)
+    elif "fob" not in data:
+        return await step3_fob(update, context)
+    elif "rate" not in data:
+        return await step4_rate(update, context)
+    elif "tonnage" not in data:
+        return await step5_tonnage(update, context)
+    elif "freight" not in data:
+        return await step6_freight(update, context)
+    elif "port" not in data:
+        return await step7_port(update, context)
+    else:
+        await update.message.reply_text("Calculation complete! Start again with /start")
+        return ConversationHandler.END
