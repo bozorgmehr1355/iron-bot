@@ -1,76 +1,183 @@
-import requests
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+from services.iron import get_iron_62, get_fe65
+from services.billet import get_billet_price
+from services.forex import get_usd_free
+from datetime import datetime
 
-TOKEN = "8742538592:AAHBoNMe33Wvsin73049sdi6htK-f3hEfUU"
-CHAT_ID = 715854466
+user_data = {}
 
-def get_currency():
-    try:
-        url = "https://open.er-api.com/v6/latest/USD"
-        r = requests.get(url, timeout=10)
-        data = r.json()
-        rates = data.get("rates", {})
-        result = {}
-        result["EUR"] = round(rates.get("EUR", 0), 4)
-        result["AED"] = round(rates.get("AED", 0), 4)
-        result["IRR"] = round(rates.get("IRR", 0), 0)
-        return result
-    except:
-        return None
-
-def get_iron_price():
-    try:
-        import os
-        API_KEY = os.environ.get("FRED_API_KEY", "")
-        url = f"https://api.stlouisfed.org/fred/series/observations?series_id=PIORECRUSDM&api_key={API_KEY}&sort_order=desc&limit=1&file_type=json"
-        r = requests.get(url, timeout=10)
-        data = r.json()
-        price = data["observations"][0]["value"]
-        return float(price)
-    except:
-        return None
-
-
-def build_report():
-    currencies = get_currency()
-    iron = get_iron_price()
-    msg = "--- Market Report ---\n\n"
-    if currencies:
-        msg += f"USD/EUR: {currencies.get('EUR', 'N/A')}\n"
-        msg += f"USD/AED: {currencies.get('AED', 'N/A')}\n"
-        msg += f"USD/IRR: {currencies.get('IRR', 'N/A')}\n"
-    else:
-        msg += "Error getting currency data\n"
-    msg += "\n"
-    if iron:
-        msg += f"Iron Ore (global): ${iron}\n"
-    else:
-        msg += "Error getting iron price\n"
-    msg += "\n--- end ---"
-    return msg
-
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    keyboard = [[InlineKeyboardButton("Get Report", callback_data="report")]]
+async def profit_start(update, context):
+    user_id = update.message.from_user.id
+    user_data[user_id] = {}
+    keyboard = [
+        [InlineKeyboardButton("Iron Ore 62%", callback_data="prod_1"),
+         InlineKeyboardButton("Fe 65%", callback_data="prod_2")],
+        [InlineKeyboardButton("Pellet", callback_data="prod_3"),
+         InlineKeyboardButton("Billet", callback_data="prod_4")],
+        [InlineKeyboardButton("Custom price", callback_data="prod_5")]
+    ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text("Hello! Press the button below", reply_markup=reply_markup)
+    await update.message.reply_text("Step 1/7: Select product:", reply_markup=reply_markup)
 
-async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def profit_product_select(update, context):
     query = update.callback_query
     await query.answer()
-    if query.data == "report":
-        msg = build_report()
-        await query.edit_message_text(msg)
+    user_id = query.from_user.id
 
-async def report_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    msg = build_report()
-    await update.message.reply_text(msg)
+    if user_id not in user_data:
+        user_data[user_id] = {}
 
-if __name__ == "__main__":
-    app = ApplicationBuilder().token(TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("report", report_command))
-    app.add_handler(CallbackQueryHandler(button))
-    print("Bot started...")
-    app.run_polling()
+    products = {
+        "prod_1": ("Iron Ore 62%", get_iron_62),
+        "prod_2": ("Fe 65% Concentrate", get_fe65),
+        "prod_3": ("Pellet", lambda: round(get_iron_62() + 15, 2)),
+        "prod_4": ("Billet", get_billet_price),
+        "prod_5": ("Custom", None)
+    }
 
+    name, fn = products[query.data]
+    user_data[user_id]["product"] = name
+    user_data[user_id]["price_fn"] = fn
+
+    await query.edit_message_text("Fetching market data...")
+
+    if fn:
+        price = fn()
+        user_data[user_id]["suggested_fob"] = price
+        await query.edit_message_text(
+            "Product: " + name + "\n"
+            "Current market price: $" + str(price) + "/ton\n\n"
+            "Step 2/7: Purchase price in Iran ($/ton)?\n"
+            "Example: 95"
+        )
+    else:
+        await query.edit_message_text(
+            "Step 2/7: Purchase price in Iran ($/ton)?\n"
+            "Example: 95"
+        )
+
+async def profit_step(update, context):
+    user_id = update.message.from_user.id
+    text = update.message.text.strip()
+
+    if user_id not in user_data or "product" not in user_data[user_id]:
+        return
+
+    data = user_data[user_id]
+
+    if "purchase" not in data:
+        try:
+            data["purchase"] = float(text)
+        except Exception:
+            await update.message.reply_text("Please enter a valid number")
+            return
+        fn = data.get("price_fn")
+        if fn:
+            price = data.get("suggested_fob", fn())
+            await update.message.reply_text(
+                "Step 3/7: FOB selling price ($/ton)?\n"
+                "Current market: $" + str(price) + "/ton\n"
+                "Send 0 to use market price or enter custom:"
+            )
+        else:
+            await update.message.reply_text("Step 3/7: FOB selling price ($/ton)?")
+
+    elif "fob" not in data:
+        try:
+            val = float(text)
+            if val == 0 and "suggested_fob" in data:
+                data["fob"] = data["suggested_fob"]
+            else:
+                data["fob"] = val
+        except Exception:
+            await update.message.reply_text("Please enter a valid number")
+            return
+        await update.message.reply_text("Fetching exchange rate...")
+        rate = get_usd_free()
+        if rate:
+            clean = rate.replace(",", "")
+            data["suggested_rate"] = clean
+            await update.message.reply_text(
+                "Step 4/7: Exchange rate (Rials/USD)?\n"
+                "Current rate: " + rate + "\n"
+                "Send 0 to use current rate or enter custom:"
+            )
+        else:
+            await update.message.reply_text(
+                "Step 4/7: Exchange rate (Rials/USD)?\n"
+                "Example: 1798800"
+            )
+
+    elif "rate" not in data:
+        try:
+            val = float(text)
+            if val == 0 and "suggested_rate" in data:
+                data["rate"] = float(data["suggested_rate"])
+            else:
+                data["rate"] = val
+        except Exception:
+            await update.message.reply_text("Please enter a valid number")
+            return
+        await update.message.reply_text("Step 5/7: Tonnage (tons)?\nExample: 5000")
+
+    elif "tonnage" not in data:
+        try:
+            data["tonnage"] = float(text)
+        except Exception:
+            await update.message.reply_text("Please enter a valid number")
+            return
+        await update.message.reply_text("Step 6/7: Freight cost ($/ton)?\nExample: 18")
+
+    elif "freight" not in data:
+        try:
+            data["freight"] = float(text)
+        except Exception:
+            await update.message.reply_text("Please enter a valid number")
+            return
+        await update.message.reply_text("Step 7/7: Port and loading cost ($/ton)?\nExample: 4")
+
+    elif "port" not in data:
+        try:
+            data["port"] = float(text)
+        except Exception:
+            await update.message.reply_text("Please enter a valid number")
+            return
+
+        t = data["tonnage"]
+        purchase = data["purchase"]
+        fob = data["fob"]
+        rate = data["rate"]
+        freight = data["freight"]
+        port = data["port"]
+
+        revenue_usd = fob * t
+        purchase_cost = purchase * t
+        freight_cost = freight * t
+        port_cost = port * t
+        total_cost = purchase_cost + freight_cost + port_cost
+        profit_usd = revenue_usd - total_cost
+        profit_rials = profit_usd * rate
+
+        now = datetime.now().strftime("%b %d, %Y - %H:%M")
+
+        result = "Profit Calculation\n"
+        result += now + "\n"
+        result += "-------------------\n"
+        result += "Product: " + data["product"] + "\n"
+        result += "Tonnage: " + f"{t:,.0f}" + " tons\n"
+        result += "Purchase price: $" + str(purchase) + "/ton\n"
+        result += "FOB price: $" + str(fob) + "/ton\n"
+        result += "Exchange rate: " + f"{rate:,.0f}" + "\n"
+        result += "-------------------\n"
+        result += "Revenue: $" + f"{revenue_usd:,.0f}" + "\n"
+        result += "Purchase cost: $" + f"{purchase_cost:,.0f}" + "\n"
+        result += "Freight: $" + f"{freight_cost:,.0f}" + "\n"
+        result += "Port costs: $" + f"{port_cost:,.0f}" + "\n"
+        result += "Total Cost: $" + f"{total_cost:,.0f}" + "\n"
+        result += "-------------------\n"
+        result += "Net Profit (USD): $" + f"{profit_usd:,.0f}" + "\n"
+        result += "Net Profit (Rials): " + f"{profit_rials:,.0f}" + "\n"
+        result += "-------------------\n"
+
+        await update.message.reply_text(result)
+        del user_data[user_id]
