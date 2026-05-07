@@ -1,6 +1,6 @@
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ConversationHandler, MessageHandler, filters, CallbackQueryHandler
-from commands.profit_cmd import profit_start, profit_step, PRODUCT, PURCHASE, FOB, RATE, TONNAGE, FREIGHT, PORT, user_data
+from commands.profit_cmd import profit_start, profit_step, product_selection, PRODUCT, PURCHASE, FOB, RATE_RIAL, RATE_DIRHAM, TONNAGE, FREIGHT, PORT, user_data
 import os
 
 # ========== /start command ==========
@@ -10,6 +10,7 @@ async def start(update: Update, context):
     keyboard = [
         [InlineKeyboardButton("📊 Profit Calculation", callback_data="new_profit")],
         [InlineKeyboardButton("💰 Product Prices", callback_data="prices")],
+        [InlineKeyboardButton("💱 Exchange Rates", callback_data="rates")],
         [InlineKeyboardButton("❓ Guide / Help", callback_data="help")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -38,6 +39,18 @@ async def button_handler(update: Update, context):
             "⏱️ Last update: Just now"
         )
         
+    elif query.data == "rates":
+        from commands.profit_cmd import get_usd_rial_rate, get_usd_dirham_rate
+        rial = get_usd_rial_rate()
+        dirham = get_usd_dirham_rate()
+        await query.message.reply_text(
+            f"💱 Current Exchange Rates:\n\n"
+            f"🇺🇸 USD → 🇮🇷 RIAL: {rial:,.0f} Rials\n"
+            f"🇺🇸 USD → 🇦🇪 DIRHAM: {dirham:.2f} Dirhams\n\n"
+            f"📊 1 USD = {dirham:.2f} AED\n"
+            f"📊 1 AED = {rial/dirham:,.0f} Rials"
+        )
+        
     elif query.data == "help":
         await query.message.reply_text(
             "📖 Bot Guide:\n\n"
@@ -59,24 +72,23 @@ async def cancel(update: Update, context):
 
 # ========== MAIN FUNCTION ==========
 def main():
-    # دریافت توکن از متغیر محیطی (برای امنیت)
     TOKEN = os.environ.get("BOT_TOKEN")
     
     if not TOKEN:
         print("❌ Error: BOT_TOKEN not found in environment variables!")
         return
     
-    # Create application
     app = Application.builder().token(TOKEN).build()
     
-    # Create conversation handler for profit calculation
+    # Conversation handler
     conv_handler = ConversationHandler(
         entry_points=[CallbackQueryHandler(button_handler, pattern="^new_profit$")],
         states={
-            PRODUCT: [MessageHandler(filters.TEXT & ~filters.COMMAND, profit_step)],
+            PRODUCT: [CallbackQueryHandler(product_selection, pattern="^prod_"),
+                     MessageHandler(filters.TEXT & ~filters.COMMAND, profit_step)],
             PURCHASE: [MessageHandler(filters.TEXT & ~filters.COMMAND, profit_step)],
-            FOB: [MessageHandler(filters.TEXT & ~filters.COMMAND, profit_step)],
-            RATE: [MessageHandler(filters.TEXT & ~filters.COMMAND, profit_step)],
+            RATE_RIAL: [MessageHandler(filters.TEXT & ~filters.COMMAND, profit_step)],
+            RATE_DIRHAM: [MessageHandler(filters.TEXT & ~filters.COMMAND, profit_step)],
             TONNAGE: [MessageHandler(filters.TEXT & ~filters.COMMAND, profit_step)],
             FREIGHT: [MessageHandler(filters.TEXT & ~filters.COMMAND, profit_step)],
             PORT: [MessageHandler(filters.TEXT & ~filters.COMMAND, profit_step)],
@@ -86,14 +98,12 @@ def main():
     
     # Add handlers
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CallbackQueryHandler(button_handler, pattern="^(new_profit|prices|help)$"))
+    app.add_handler(CallbackQueryHandler(button_handler, pattern="^(new_profit|prices|rates|help)$"))
     app.add_handler(conv_handler)
     app.add_handler(CommandHandler("cancel", cancel))
     
-    # Start the bot
     print("🤖 Bot is running...")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
     main()
-
