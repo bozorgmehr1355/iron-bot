@@ -1,6 +1,9 @@
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ConversationHandler, MessageHandler, filters, CallbackQueryHandler
-from commands.profit_cmd import profit_start, profit_step, product_selection, PRODUCT, PURCHASE, FOB, RATE_RIAL, RATE_DIRHAM, TONNAGE, FREIGHT, PORT, user_data
+from commands.profit_cmd import (
+    profit_start, profit_step, product_selection,
+    PRODUCT, PURCHASE, FOB, RATE_RIAL, RATE_DIRHAM, TONNAGE, FREIGHT, PORT, user_data
+)
 import os
 
 # ========== /start command ==========
@@ -20,7 +23,7 @@ async def start(update: Update, context):
         reply_markup=reply_markup
     )
 
-# ========== Handle button clicks ==========
+# ========== Handle main menu buttons ==========
 async def button_handler(update: Update, context):
     query = update.callback_query
     await query.answer()
@@ -38,6 +41,7 @@ async def button_handler(update: Update, context):
             "🔹 Billet: $520/ton\n\n"
             "⏱️ Last update: Just now"
         )
+        return ConversationHandler.END
         
     elif query.data == "rates":
         from commands.profit_cmd import get_usd_rial_rate, get_usd_dirham_rate
@@ -80,12 +84,15 @@ def main():
     
     app = Application.builder().token(TOKEN).build()
     
-    # Conversation handler
+    # ✅ Conversation handler با تنظیمات کامل برای دکمه‌های محصول
     conv_handler = ConversationHandler(
         entry_points=[CallbackQueryHandler(button_handler, pattern="^new_profit$")],
         states={
-            PRODUCT: [CallbackQueryHandler(product_selection, pattern="^prod_"),
-                     MessageHandler(filters.TEXT & ~filters.COMMAND, profit_step)],
+            # 🔴 مهم: برای state PRODUCT باید هر دو نوع هندلر رو داشته باشیم
+            PRODUCT: [
+                CallbackQueryHandler(product_selection, pattern="^(prod_1|prod_2|prod_3|prod_4|prod_5)$"),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, profit_step)
+            ],
             PURCHASE: [MessageHandler(filters.TEXT & ~filters.COMMAND, profit_step)],
             RATE_RIAL: [MessageHandler(filters.TEXT & ~filters.COMMAND, profit_step)],
             RATE_DIRHAM: [MessageHandler(filters.TEXT & ~filters.COMMAND, profit_step)],
