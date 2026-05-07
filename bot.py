@@ -1,187 +1,202 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters
+from telegram.ext import Application, CommandHandler, ConversationHandler, MessageHandler, filters, CallbackQueryHandler
+import os
+import requests
 from datetime import datetime
+
+# States
+PRODUCT, PURCHASE, RATE_RIAL, RATE_DIRHAM, TONNAGE, FREIGHT, PORT = range(7)
 
 user_data = {}
 
-# ========== پردازش دکمه‌های منوی اصلی ==========
-async def start(update: Update, context):
-    keyboard = [
-        [InlineKeyboardButton("Profit Calculation", callback_data="profit")],
-        [InlineKeyboardButton("Product Prices", callback_data="prices")],
-        [InlineKeyboardButton("Guide / Help", callback_data="help")]
-    ]
-    await update.message.reply_text(
-        "Welcome to Ironston Bot!\n\nChoose an option:",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
+# ========== نرخ ارز ==========
+def get_usd_rial_rate():
+    try:
+        r = requests.get("https://api.nobitex.ir/v2/trades", timeout=5)
+        if r.status_code == 200:
+            price = float(r.json().get("stats", {}).get("USDT-IRT", {}).get("latest", 0))
+            if price > 0:
+                return price
+    except:
+        pass
+    return 65000
 
-# ========== پردازش کلیه دکمه‌ها ==========
-async def button_callback(update: Update, context):
+def get_usd_dirham_rate():
+    try:
+        r = requests.get("https://api.exchangerate.fun/latest?base=USD", timeout=5)
+        if r.status_code == 200:
+            return float(r.json().get("rates", {}).get("AED", 3.67))
+    except:
+        pass
+    return 3.67
+
+# ========== شروع ==========
+async def start(update: Update, context):
+    keyboard = [[InlineKeyboardButton("📊 محاسبه سود", callback_data="new_profit")]]
+    await update.message.reply_text("ربات محاسبه سود سنگ آهن", reply_markup=InlineKeyboardMarkup(keyboard))
+
+async def profit_start(update: Update, context):
     query = update.callback_query
     await query.answer()
+    user_data[query.from_user.id] = {}
+    
+    keyboard = [
+        [InlineKeyboardButton("Iron Ore 62%", callback_data="prod_1")],
+        [InlineKeyboardButton("Fe 65%", callback_data="prod_2")],
+        [InlineKeyboardButton("Pellet", callback_data="prod_3")],
+        [InlineKeyboardButton("Billet", callback_data="prod_4")],
+    ]
+    await query.edit_message_text("محصول را انتخاب کن:", reply_markup=InlineKeyboardMarkup(keyboard))
+    return PRODUCT
 
-    user_id = query.from_user.id
+async def product_choice(update: Update, context):
+    query = update.callback_query
+    await query.answer()
+    products = {"prod_1": "Iron Ore 62%", "prod_2": "Fe 65%", "prod_3": "Pellet", "prod_4": "Billet"}
+    user_data[query.from_user.id]["product"] = products[query.data]
+    await query.edit_message_text("قیمت خرید هر تن به دلار؟ (مثال: 95)")
+    return PURCHASE
 
-    if query.data == "profit":
-        # شروع محاسبه سود
-        user_data[user_id] = {}
-        await query.message.reply_text("Step 1/7: Select product?\nExample: Iron Ore 62%")
+async def get_purchase(update: Update, context):
+    uid = update.effective_user.id
+    try:
+        user_data[uid]["purchase"] = float(update.message.text)
+        await update.message.reply_text(f"نرخ دلار آزاد: {get_usd_rial_rate():,.0f} تومان\n0=همین نرخ، یا عدد دلخواه:")
+        return RATE_RIAL
+    except:
+        await update.message.reply_text("عدد وارد کن")
+        return PURCHASE
 
-    elif query.data == "prices":
-        await query.message.reply_text(
-            "Current Prices:\n\n"
-            "Iron Ore 62%: $118.5/ton\n"
-            "Fe 65%: $135.2/ton\n"
-            "Pellet: $156.8/ton\n"
-            "Billet: $520/ton"
-        )
+async def get_rate_rial(update: Update, context):
+    uid = update.effective_user.id
+    try:
+        val = float(update.message.text)
+        user_data[uid]["rate_rial"] = val if val != 0 else get_usd_rial_rate()
+        await update.message.reply_text(f"نرخ درهم: {get_usd_dirham_rate():.2f}\n0=همین نرخ، یا عدد دلخواه:")
+        return RATE_DIRHAM
+    except:
+        await update.message.reply_text("عدد وارد کن")
+        return RATE_RIAL
 
-    elif query.data == "help":
-        await query.message.reply_text(
-            "How to use:\n\n"
-            "1. Click 'Profit Calculation'\n"
-            "2. Enter product name\n"
-            "3. Enter numbers when asked\n\n"
-            "Commands:\n/cancel - Cancel operation"
-        )
+async def get_rate_dirham(update: Update, context):
+    uid = update.effective_user.id
+    try:
+        val = float(update.message.text)
+        user_data[uid]["rate_dirham"] = val if val != 0 else get_usd_dirham_rate()
+        await update.message.reply_text("چند تن؟ (مثال: 5000)")
+        return TONNAGE
+    except:
+        await update.message.reply_text("عدد وارد کن")
+        return RATE_DIRHAM
 
-# ========== پردازش متن‌های کاربر (ادامه محاسبه سود) ==========
-async def handle_message(update: Update, context):
-    user_id = update.effective_user.id
-    text = update.message.text
+async def get_tonnage(update: Update, context):
+    uid = update.effective_user.id
+    try:
+        user_data[uid]["tonnage"] = float(update.message.text)
+        await update.message.reply_text("هزینه حمل هر تن به دلار؟ (مثال: 18)")
+        return FREIGHT
+    except:
+        await update.message.reply_text("عدد وارد کن")
+        return TONNAGE
 
-    # اگر کاربر در حال محاسبه سود نباشد
-    if user_id not in user_data:
-        await update.message.reply_text("Press /start to begin")
-        return
+async def get_freight(update: Update, context):
+    uid = update.effective_user.id
+    try:
+        user_data[uid]["freight"] = float(update.message.text)
+        await update.message.reply_text("هزینه بارگیری در پورت هر تن به دلار؟ (مثال: 4)")
+        return PORT
+    except:
+        await update.message.reply_text("عدد وارد کن")
+        return FREIGHT
 
-    data = user_data[user_id]
-
-    # مرحله 1: محصول
-    if "product" not in data:
-        data["product"] = text
-        await update.message.reply_text("Step 2/7: Purchase price (USD per ton)?\nExample: 105")
-
-    # مرحله 2: قیمت خرید
-    elif "purchase" not in data:
-        try:
-            data["purchase"] = float(text)
-        except:
-            await update.message.reply_text("Please enter a valid number")
-            return
-        await update.message.reply_text("Step 3/7: FOB selling price (USD per ton)?\nExample: 118.5")
-
-    # مرحله 3: قیمت فروش
-    elif "fob" not in data:
-        try:
-            data["fob"] = float(text)
-        except:
-            await update.message.reply_text("Please enter a valid number")
-            return
-        await update.message.reply_text("Step 4/7: Exchange rate (Rials per USD)?\nExample: 65000")
-
-    # مرحله 4: نرخ ارز
-    elif "rate" not in data:
-        try:
-            data["rate"] = float(text)
-        except:
-            await update.message.reply_text("Please enter a valid number")
-            return
-        await update.message.reply_text("Step 5/7: Tonnage (tons)?\nExample: 5000")
-
-    # مرحله 5: تناژ
-    elif "tonnage" not in data:
-        try:
-            data["tonnage"] = float(text)
-        except:
-            await update.message.reply_text("Please enter a valid number")
-            return
-        await update.message.reply_text("Step 6/7: Freight cost (USD per ton)?\nExample: 18")
-
-    # مرحله 6: هزینه حمل
-    elif "freight" not in data:
-        try:
-            data["freight"] = float(text)
-        except:
-            await update.message.reply_text("Please enter a valid number")
-            return
-        await update.message.reply_text("Step 7/7: Port and loading cost (USD per ton)?\nExample: 4")
-
-    # مرحله 7: هزینه بندر - محاسبه نهایی
-    elif "port" not in data:
-        try:
-            data["port"] = float(text)
-        except:
-            await update.message.reply_text("Please enter a valid number")
-            return
-
-        #
-
-محاسبات
-        t = data["tonnage"]
-        purchase = data["purchase"]
-        fob = data["fob"]
-        rate = data["rate"]
-        freight = data["freight"]
-        port = data["port"]
-
-        revenue_usd = fob  t
-        purchase_cost = purchase  t
-        freight_cost = freight  t
-        port_cost = port  t
-        total_cost = purchase_cost + freight_cost + port_cost
-        profit_usd = revenue_usd - total_cost
-        profit_rials = profit_usd * rate
-
-        now = datetime.now().strftime("%b %d, %Y - %H:%M")
-
+async def get_port(update: Update, context):
+    uid = update.effective_user.id
+    try:
+        user_data[uid]["port"] = float(update.message.text)
+        
+        d = user_data[uid]
+        t = d["tonnage"]
+        purchase = d["purchase"]
+        freight = d["freight"]
+        port = d["port"]
+        rate_rial = d["rate_rial"]
+        rate_dirham = d["rate_dirham"]
+        
+        # سود 20 درصدی
+        fob = purchase * 1.2
+        
+        revenue_usd = fob * t
+        total_cost_usd = (purchase + freight + port) * t
+        profit_usd = revenue_usd - total_cost_usd
+        profit_rial = profit_usd * rate_rial
+        profit_dirham = profit_usd * rate_dirham
+        
+        now = datetime.now().strftime("%Y/%m/%d - %H:%M")
+        
         result = f"""
-=== PROFIT CALCULATION ===
-{now}
-------------------------
-Product: {data['product']}
-Tonnage: {t:,.0f} tons
-Purchase price: ${purchase}/ton
-FOB price: ${fob}/ton
-Exchange rate: {rate:,.0f} Rials
-------------------------
-Revenue: ${revenue_usd:,.0f}
-Purchase cost: ${purchase_cost:,.0f}
-Freight: ${freight_cost:,.0f}
-Port costs: ${port_cost:,.0f}
-Total Cost: ${total_cost:,.0f}
-------------------------
-Net Profit (USD): ${profit_usd:,.0f}
-Net Profit (Rials): {profit_rials:,.0f}
-------------------------
+📊 **نتیجه محاسبه سود**
+📅 {now}
+─────────────────
+📦 محصول: {d['product']}
+⚖️ تناژ: {t:,.0f} تن
+💰 قیمت خرید: ${purchase:,.0f}/تن
+💵 قیمت فروش (FOB): ${fob:,.0f}/تن
+─────────────────
+🚢 هزینه حمل: ${freight:,.0f}/تن
+⚓ هزینه پورت: ${port:,.0f}/تن
+─────────────────
+💲 درآمد کل: ${revenue_usd:,.0f}
+📉 هزینه کل: ${total_cost_usd:,.0f}
+─────────────────
+✅ **سود خالص:**
+🇺🇸 دلار: ${profit_usd:,.0f}
+🇮🇷 ریال: {profit_rial:,.0f}
+🇦🇪 درهم: {profit_dirham:,.0f}
+─────────────────
+💱 نرخ دلار آزاد: {rate_rial:,.0f} ریال
+💱 نرخ دلار به درهم: {rate_dirham:.2f}
 """
-        await update.message.reply_text(result)
-        del user_data[user_id]
+        await update.message.reply_text(result, parse_mode="Markdown")
+        del user_data[uid]
+        return ConversationHandler.END
+    except Exception as e:
+        await update.message.reply_text(f"خطا: {str(e)}\nعدد وارد کن")
+        return PORT
 
-# ========== لغو عملیات ==========
-async def cancel(update: Update, context):
-    user_id = update.effective_user.id
-    if user_id in user_data:
-        del user_data[user_id]
-    await update.message.reply_text("Operation cancelled. Press /start to begin again.")
+async def cancel(update, context):
+    uid = update.effective_user.id
+    if uid in user_data:
+        del user_data[uid]
+    await update.message.reply_text("لغو شد.")
 
-# ========== اجرای اصلی ==========
 def main():
-    TOKEN = "8742538592:AAEeT1DCoMUZWoM7zS3tds-k5YAAAC_ADpU
-
-"  # توکن خود را وارد کنید
-
+    TOKEN = os.environ.get("BOT_TOKEN")
+    if not TOKEN:
+        print("توکن نداریم")
+        return
+    
     app = Application.builder().token(TOKEN).build()
-
+    
+    conv = ConversationHandler(
+        entry_points=[CallbackQueryHandler(profit_start, pattern="^new_profit$")],
+        states={
+            PRODUCT: [CallbackQueryHandler(product_choice, pattern="^prod_")],
+            PURCHASE: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_purchase)],
+            RATE_RIAL: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_rate_rial)],
+            RATE_DIRHAM: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_rate_dirham)],
+            TONNAGE: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_tonnage)],
+            FREIGHT: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_freight)],
+            PORT: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_port)],
+        },
+        fallbacks=[CommandHandler("cancel", cancel)],
+    )
+    
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(conv)
     app.add_handler(CommandHandler("cancel", cancel))
-    app.add_handler(CallbackQueryHandler(button_callback))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-
-    print("Bot is running...")
+    
+    print("ربات روشن شد")
     app.run_polling()
 
 if __name__ == "__main__":
     main()
-
