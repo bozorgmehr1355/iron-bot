@@ -168,7 +168,9 @@ async def cancel(update: Update, context):
 
 # ========== اجرای اصلی ==========
 def main():
-    TOKEN = "YOUR_BOT_TOKEN_HERE"  # توکن خود را وارد کنید
+    TOKEN = "8742538592:AAEeT1DCoMUZWoM7zS3tds-k5YAAAC_ADpU
+
+"  # توکن خود را وارد کنید
 
     app = Application.builder().token(TOKEN).build()
 
