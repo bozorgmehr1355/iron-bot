@@ -2,6 +2,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ConversationHandler
 from datetime import datetime
 import requests
+import json
 
 # States
 PRODUCT, PURCHASE, FOB, RATE_RIAL, RATE_DIRHAM, TONNAGE, FREIGHT, PORT = range(8)
@@ -9,29 +10,58 @@ PRODUCT, PURCHASE, FOB, RATE_RIAL, RATE_DIRHAM, TONNAGE, FREIGHT, PORT = range(8
 # In-memory database
 user_data = {}
 
-# ========== دریافت نرخ ارز از منبع پایدار ==========
-def get_usd_rial_rate():
+# ========== دریافت نرخ ارز بازار آزاد ایران ==========
+
+def get_usd_rial_rate_free_market():
     """
-    دریافت نرخ دلار به ریال از api.exchangerate.fun
-    این API رایگان، بدون محدودیت، و هر ساعت بروز میشه
+    دریافت نرخ دلار به ریال از بازار آزاد
+    استفاده از چند منبع مختلف برای دقت بیشتر
     """
+    
+    # منبع 1: nobitex (صرافی آنلاین ایران)
     try:
-        response = requests.get("https://api.exchangerate.fun/latest?base=USD", timeout=5)
+        response = requests.get("https://api.nobitex.ir/v2/trades", timeout=5)
         if response.status_code == 200:
             data = response.json()
-            rial_rate = data.get("rates", {}).get("IRR")
-            if rial_rate:
-                return float(rial_rate)
-    except Exception as e:
-        print(f"Error fetching USD/IRR rate: {e}")
+            # جفت ارز USDT/IRT (تتر به ریال)
+            usdt_irt = data.get("stats", {}).get("USDT-IRT", {})
+            if usdt_irt:
+                price = float(usdt_irt.get("latest", 0))
+                if price > 0:
+                    return price
+    except:
+        pass
     
-    # Fallback: نرخ تقریبی بازار آزاد
+    # منبع 2: tgju.org (نرخ دلار بازار آزاد)
+    try:
+        response = requests.get("https://api.tgju.org/v1/price/price_dollar_rl", timeout=5)
+        if response.status_code == 200:
+            data = response.json()
+            price = float(data.get("price", 0))
+            if price > 0:
+                return price
+    except:
+        pass
+    
+    # منبع 3: bankmarket (آخرین نرخ)
+    try:
+        response = requests.get("https://bankmarket.ir/api/currency/live", timeout=5)
+        if response.status_code == 200:
+            data = response.json()
+            for item in data.get("data", []):
+                if item.get("symbol") == "USD":
+                    return float(item.get("price", 0))
+    except:
+        pass
+    
+    # Fallback: نرخ تقریبی بازار آزاد (آخرین نرخ شناخته شده)
     return 65000
 
 def get_usd_dirham_rate():
     """
-    دریافت نرخ دلار به درهم از api.exchangerate.fun
+    دریافت نرخ دلار به درهم امارات (نرخ بین‌المللی)
     """
+    # منبع 1: exchangerate.fun (نرخ رسمی)
     try:
         response = requests.get("https://api.exchangerate.fun/latest?base=USD", timeout=5)
         if response.status_code == 200:
@@ -39,13 +69,36 @@ def get_usd_dirham_rate():
             aed_rate = data.get("rates", {}).get("AED")
             if aed_rate:
                 return float(aed_rate)
-    except Exception as e:
-        print(f"Error fetching USD/AED rate: {e}")
+    except:
+        pass
+    
+    # منبع 2: exchangerate-api
+    try:
+        response = requests.get("https://api.exchangerate-api.com/v4/latest/USD", timeout=5)
+        if response.status_code == 200:
+            data = response.json()
+            aed_rate = data.get("rates", {}).get("AED")
+            if aed_rate:
+                return float(aed_rate)
+    except:
+        pass
     
     # Fallback: نرخ تقریبی (1 دلار = 3.67 درهم)
     return 3.67
 
-# ========== تابع شروع - پشتیبانی کامل از دکمه و پیام ==========
+def get_aed_to_rial_rate():
+    """
+    دریافت نرخ درهم به ریال (محاسبه از روی دلار)
+    """
+    usd_rial = get_usd_rial_rate_free_market()
+    usd_aed = get_usd_dirham_rate()
+    
+    if usd_aed > 0:
+        return usd_rial / usd_aed
+    
+    return usd_rial / 3.67
+
+# ========== تابع شروع ==========
 async def profit_start(update: Update, context):
     """شروع فرآیند محاسبه سود - هم برای دکمه و هم برای پیام مستقیم کار میکنه"""
     
@@ -129,16 +182,19 @@ async def step2_purchase(update: Update, context):
         await update.message.reply_text("❌ Please enter a valid number")
         return PURCHASE
     
-    await update.message.reply_text("📊 Fetching exchange rates...")
-    usd_rial = get_usd_rial_rate()
+    await update.message.reply_text("📊 Fetching exchange rates from free market...")
+    
+    usd_rial = get_usd_rial_rate_free_market()
     usd_dirham = get_usd_dirham_rate()
+    aed_rial = get_aed_to_rial_rate()
     
     user_data[user_id]["suggested_rial_rate"] = usd_rial
     user_data[user_id]["suggested_dirham_rate"] = usd_dirham
+    user_data[user_id]["suggested_aed_rial_rate"] = aed_rial
     
     await update.message.reply_text(
-        f"💱 *Step 3/8:* USD to RIAL exchange rate?\n\n"
-        f"💰 Current market rate: `{usd_rial:,.0f}` Rials/USD\n"
+        f"💱 *Step 3/8:* USD to RIAL exchange rate (Free Market)?\n\n"
+        f"💰 Current free market rate: `{usd_rial:,.0f}` Rials/USD\n"
         f"📝 Send `0` to use market rate or enter custom:",
         parse_mode="Markdown"
     )
@@ -217,7 +273,7 @@ async def step7_port(update: Update, context):
     freight = data.get("freight", 0)
     port = data.get("port", 0)
     
-    # FOB = purchase + 20% profit margin (قابل تنظیم)
+    # FOB = purchase + 20% profit margin
     fob = purchase * 1.2
     
     revenue_usd = fob * t
@@ -235,29 +291,30 @@ async def step7_port(update: Update, context):
     result = (
         f"📊 *=== PROFIT CALCULATION ===* 📊\n"
         f"📅 {now}\n"
-        f"{'─' * 35}\n"
+        f"{'─' * 40}\n"
         f"📦 *Product:* {data['product']}\n"
         f"⚖️ *Tonnage:* {t:,.0f} tons\n"
         f"💰 *Purchase:* ${purchase:.2f}/ton\n"
         f"💵 *FOB:* ${fob:.2f}/ton\n"
-        f"{'─' * 35}\n"
+        f"💱 *Exchange Rate (USD/RIAL):* {rate_rial:,.0f}\n"
+        f"{'─' * 40}\n"
         f"💲 *Revenue:* ${revenue_usd:,.0f}\n"
         f"📥 *Purchase cost:* ${purchase_cost:,.0f}\n"
         f"🚢 *Freight:* ${freight_cost:,.0f}\n"
         f"⚓ *Port costs:* ${port_cost:,.0f}\n"
         f"📊 *Total Cost:* ${total_cost:,.0f}\n"
-        f"{'─' * 35}\n"
+        f"{'─' * 40}\n"
         f"✅ *Net Profit (USD):* ${profit_usd:,.0f}\n"
         f"✅ *Net Profit (RIALS):* {profit_rial:,.0f} Rials\n"
         f"✅ *Net Profit (DIRHAM):* {profit_dirham:,.0f} Dirhams\n"
-        f"{'─' * 35}"
+        f"{'─' * 40}"
     )
 
     await update.message.reply_text(result, parse_mode="Markdown")
     del user_data[user_id]
     return ConversationHandler.END
 
-# ========== تابع مرحله - برای main.py ==========
+# ========== تابع مرحله - برای main.py/bot.py ==========
 async def profit_step(update: Update, context):
     """پردازش مرحله به مرحله"""
     user_id = update.effective_user.id
