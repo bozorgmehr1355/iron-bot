@@ -181,3 +181,4 @@ async def profit_step(update, context):
 
         await update.message.reply_text(result)
         del user_data[user_id]
+        
