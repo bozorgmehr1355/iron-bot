@@ -1,173 +1,76 @@
-from services.iron import get_iron_62, get_fe65
-from services.billet import get_billet_price
-from services.forex import get_usd_free
+import requests
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
 
-user_data = {}
+TOKEN = "8742538592:AAHBoNMe33Wvsin73049sdi6htK-f3hEfUU"
+CHAT_ID = 715854466
 
-async def profit_start(update, context):
-    user_id = update.message.from_user.id
-    user_data[user_id] = {}
-    await update.message.reply_text(
-        "Step 1/7: Product type?\n"
-        "1. Iron Ore 62%\n"
-        "2. Fe 65% Concentrate\n"
-        "3. Pellet\n"
-        "4. Billet\n"
-        "5. Custom price\n\n"
-        "Send the number (1-5):"
-    )
+def get_currency():
+    try:
+        url = "https://open.er-api.com/v6/latest/USD"
+        r = requests.get(url, timeout=10)
+        data = r.json()
+        rates = data.get("rates", {})
+        result = {}
+        result["EUR"] = round(rates.get("EUR", 0), 4)
+        result["AED"] = round(rates.get("AED", 0), 4)
+        result["IRR"] = round(rates.get("IRR", 0), 0)
+        return result
+    except:
+        return None
 
-async def profit_step(update, context):
-    user_id = update.message.from_user.id
-    text = update.message.text.strip()
+def get_iron_price():
+    try:
+        import os
+        API_KEY = os.environ.get("FRED_API_KEY", "")
+        url = f"https://api.stlouisfed.org/fred/series/observations?series_id=PIORECRUSDM&api_key={API_KEY}&sort_order=desc&limit=1&file_type=json"
+        r = requests.get(url, timeout=10)
+        data = r.json()
+        price = data["observations"][0]["value"]
+        return float(price)
+    except:
+        return None
 
-    if user_id not in user_data:
-        return
 
-    data = user_data[user_id]
+def build_report():
+    currencies = get_currency()
+    iron = get_iron_price()
+    msg = "--- Market Report ---\n\n"
+    if currencies:
+        msg += f"USD/EUR: {currencies.get('EUR', 'N/A')}\n"
+        msg += f"USD/AED: {currencies.get('AED', 'N/A')}\n"
+        msg += f"USD/IRR: {currencies.get('IRR', 'N/A')}\n"
+    else:
+        msg += "Error getting currency data\n"
+    msg += "\n"
+    if iron:
+        msg += f"Iron Ore (global): ${iron}\n"
+    else:
+        msg += "Error getting iron price\n"
+    msg += "\n--- end ---"
+    return msg
 
-    if "product" not in data:
-        products = {
-            "1": ("Iron Ore 62%", get_iron_62),
-            "2": ("Fe 65% Concentrate", get_fe65),
-            "3": ("Pellet", lambda: round(get_iron_62() + 15, 2)),
-            "4": ("Billet", get_billet_price),
-            "5": ("Custom", None)
-        }
-        if text not in products:
-            await update.message.reply_text("Please send a number between 1-5")
-            return
-        name, fn = products[text]
-        data["product"] = name
-        data["price_fn"] = fn
-        await update.message.reply_text(
-            "Step 2/7: Purchase price in Iran ($/ton)?\n"
-            "(Price you buy the product)\n"
-            "Example: 95"
-        )
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    keyboard = [[InlineKeyboardButton("Get Report", callback_data="report")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text("Hello! Press the button below", reply_markup=reply_markup)
 
-    elif "purchase" not in data:
-        try:
-            data["purchase"] = float(text)
-        except:
-            await update.message.reply_text("Please enter a valid number")
-            return
-        fn = data.get("price_fn")
-        if fn:
-            price = fn()
-            data["suggested_fob"] = price
-            await update.message.reply_text(
-                f"Step 3/7: FOB selling price ($/ton)?\n"
-                f"Current market: ${price}/ton\n"
-                f"Press 0 to use market price or enter custom:"
-            )
-        else:
-            await update.message.reply_text(
-                "Step 3/7: FOB selling price ($/ton)?\n"
-                "Example: 119"
-            )
+async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    if query.data == "report":
+        msg = build_report()
+        await query.edit_message_text(msg)
 
-    elif "fob" not in data:
-        try:
-            val = float(text)
-            if val == 0 and "suggested_fob" in data:
-                data["fob"] = data["suggested_fob"]
-            else:
-                data["fob"] = val
-        except:
-            await update.message.reply_text("Please enter a valid number")
-            return
-        rate = get_usd_free()
-        if rate:
-            clean = rate.replace(",", "")
-            data["suggested_rate"] = clean
-            await update.message.reply_text(
-                f"Step 4/7: Exchange rate (Rials/USD)?\n"
-                f"Current rate: {rate}\n"
-                f"Press 0 to use current rate or enter custom:"
-            )
-        else:
-            await update.message.reply_text(
-                "Step 4/7: Exchange rate (Rials/USD)?\n"
-                "Example: 1798800"
-            )
+async def report_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = build_report()
+    await update.message.reply_text(msg)
 
-    elif "rate" not in data:
-        try:
-            val = float(text)
-            if val == 0 and "suggested_rate" in data:
-                data["rate"] = float(data["suggested_rate"])
-            else:
-                data["rate"] = val
-        except:
-            await update.message.reply_text("Please enter a valid number")
-            return
-        await update.message.reply_text(
-            "Step 5/7: Tonnage (tons)?\n"
-            "Example: 5000"
-        )
+if __name__ == "__main__":
+    app = ApplicationBuilder().token(TOKEN).build()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("report", report_command))
+    app.add_handler(CallbackQueryHandler(button))
+    print("Bot started...")
+    app.run_polling()
 
-    elif "tonnage" not in data:
-        try:
-            data["tonnage"] = float(text)
-        except:
-            await update.message.reply_text("Please enter a valid number")
-            return
-        await update.message.reply_text(
-            "Step 6/7: Freight cost ($/ton)?\n"
-            "Example: 18"
-        )
-
-    elif "freight" not in data:
-        try:
-            data["freight"] = float(text)
-        except:
-            await update.message.reply_text("Please enter a valid number")
-            return
-        await update.message.reply_text(
-            "Step 7/7: Port and loading cost ($/ton)?\n"
-
-"Example: 4"
-        )
-
-    elif "port" not in data:
-        try:
-            data["port"] = float(text)
-        except:
-            await update.message.reply_text("Please enter a valid number")
-            return
-
-        t = data["tonnage"]
-        purchase = data["purchase"]
-        fob = data["fob"]
-        rate = data["rate"]
-        freight = data["freight"]
-        port = data["port"]
-
-        revenue_usd = fob * t
-        purchase_cost = purchase * t
-        freight_cost = freight * t
-        port_cost = port * t
-        total_cost = purchase_cost + freight_cost + port_cost
-        profit_usd = revenue_usd - total_cost
-        profit_rials = profit_usd * rate
-
-        await update.message.reply_text(
-            "Profit Calculation\n"
-            "-------------------\n"
-            f"Product: {data['product']}\n"
-            f"Tonnage: {t:,.0f} tons\n"
-            f"Purchase price: ${purchase}/ton\n"
-            f"FOB price: ${fob}/ton\n"
-            f"Exchange rate: {rate:,.0f}\n"
-            "-------------------\n"
-            f"Revenue: ${revenue_usd:,.0f}\n"
-            f"Purchase cost: ${purchase_cost:,.0f}\n"
-            f"Freight: ${freight_cost:,.0f}\n"
-            f"Port costs: ${port_cost:,.0f}\n"
-            f"Total Cost: ${total_cost:,.0f}\n"
-            "-------------------\n"
-            f"Net Profit (USD): ${profit_usd:,.0f}\n"
-            f"Net Profit (Rials): {profit_rials:,.0f}\n"
-        )
-        del user_data[user_id]
