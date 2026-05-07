@@ -2,37 +2,27 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ConversationHandler
 from datetime import datetime
 import requests
-import json
 
 # States
-PRODUCT, PURCHASE, FOB, RATE_RIAL, RATE_DIRHAM, TONNAGE, FREIGHT, PORT = range(8)
+PRODUCT, PURCHASE, RATE_RIAL, RATE_DIRHAM, TONNAGE, FREIGHT, PORT = range(7)
 
 # In-memory database
 user_data = {}
 
-# ========== دریافت نرخ ارز بازار آزاد ایران ==========
-
+# ========== دریافت نرخ ارز ==========
 def get_usd_rial_rate():
-    """
-    دریافت نرخ دلار به ریال از بازار آزاد
-    استفاده از چند منبع مختلف برای دقت بیشتر
-    """
-    
-    # منبع 1: nobitex (صرافی آنلاین ایران)
+    """دریافت نرخ دلار به ریال از بازار آزاد"""
     try:
         response = requests.get("https://api.nobitex.ir/v2/trades", timeout=5)
         if response.status_code == 200:
             data = response.json()
-            # جفت ارز USDT/IRT (تتر به ریال)
             usdt_irt = data.get("stats", {}).get("USDT-IRT", {})
-            if usdt_irt:
-                price = float(usdt_irt.get("latest", 0))
-                if price > 0:
-                    return price
+            price = float(usdt_irt.get("latest", 0))
+            if price > 0:
+                return price
     except:
         pass
     
-    # منبع 2: tgju.org (نرخ دلار بازار آزاد)
     try:
         response = requests.get("https://api.tgju.org/v1/price/price_dollar_rl", timeout=5)
         if response.status_code == 200:
@@ -43,25 +33,10 @@ def get_usd_rial_rate():
     except:
         pass
     
-    # منبع 3: bankmarket (آخرین نرخ)
-    try:
-        response = requests.get("https://bankmarket.ir/api/currency/live", timeout=5)
-        if response.status_code == 200:
-            data = response.json()
-            for item in data.get("data", []):
-                if item.get("symbol") == "USD":
-                    return float(item.get("price", 0))
-    except:
-        pass
-    
-    # Fallback: نرخ تقریبی بازار آزاد (آخرین نرخ شناخته شده)
     return 65000
 
 def get_usd_dirham_rate():
-    """
-    دریافت نرخ دلار به درهم امارات (نرخ بین‌المللی)
-    """
-    # منبع 1: exchangerate.fun (نرخ رسمی)
+    """دریافت نرخ دلار به درهم"""
     try:
         response = requests.get("https://api.exchangerate.fun/latest?base=USD", timeout=5)
         if response.status_code == 200:
@@ -71,38 +46,10 @@ def get_usd_dirham_rate():
                 return float(aed_rate)
     except:
         pass
-    
-    # منبع 2: exchangerate-api
-    try:
-        response = requests.get("https://api.exchangerate-api.com/v4/latest/USD", timeout=5)
-        if response.status_code == 200:
-            data = response.json()
-            aed_rate = data.get("rates", {}).get("AED")
-            if aed_rate:
-                return float(aed_rate)
-    except:
-        pass
-    
-    # Fallback: نرخ تقریبی (1 دلار = 3.67 درهم)
     return 3.67
-
-def get_aed_to_rial_rate():
-    """
-    دریافت نرخ درهم به ریال (محاسبه از روی دلار)
-    """
-    usd_rial = get_usd_rial_rate_free_market()
-    usd_aed = get_usd_dirham_rate()
-    
-    if usd_aed > 0:
-        return usd_rial / usd_aed
-    
-    return usd_rial / 3.67
 
 # ========== تابع شروع ==========
 async def profit_start(update: Update, context):
-    """شروع فرآیند محاسبه سود - هم برای دکمه و هم برای پیام مستقیم کار میکنه"""
-    
-    # تشخیص نوع درخواست
     if update.callback_query:
         query = update.callback_query
         await query.answer()
@@ -114,7 +61,6 @@ async def profit_start(update: Update, context):
     else:
         return PRODUCT
     
-    # مقداردهی اولیه دیتابیس کاربر
     user_data[user_id] = {}
     
     keyboard = [
@@ -122,15 +68,13 @@ async def profit_start(update: Update, context):
          InlineKeyboardButton("🪨 Fe 65%", callback_data="prod_2")],
         [InlineKeyboardButton("🟤 Pellet", callback_data="prod_3"),
          InlineKeyboardButton("🔩 Billet", callback_data="prod_4")],
-        [InlineKeyboardButton("✏️ Custom price", callback_data="prod_5")]
+        [InlineKeyboardButton("✏️ Custom", callback_data="prod_5")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     await message.reply_text(
-        "📊 *Step 1/8: Select Product*\n\n"
-        "Choose one of the options below:",
-        reply_markup=reply_markup,
-        parse_mode="Markdown"
+        "📊 Step 1: Select Product:",
+        reply_markup=reply_markup
     )
     
     return PRODUCT
@@ -146,32 +90,28 @@ async def product_selection(update: Update, context):
     
     products = {
         "prod_1": "Iron Ore 62%",
-        "prod_2": "Fe 65% Concentrate", 
+        "prod_2": "Fe 65%", 
         "prod_3": "Pellet",
         "prod_4": "Billet",
         "prod_5": "Custom"
     }
     
-    product_name = products.get(query.data, "Unknown")
-    user_data[user_id]["product"] = product_name
+    user_data[user_id]["product"] = products.get(query.data, "Unknown")
     
     await query.edit_message_text(
-        f"✅ *Product Selected:* {product_name}\n\n"
-        f"💰 *Step 2/8:* Purchase price (USD per ton)?\n"
-        f"📝 Example: `105`",
-        parse_mode="Markdown"
+        f"✅ Product: {user_data[user_id]['product']}\n\n"
+        f"💰 Step 2: Purchase price (USD/ton)?\nExample: 105"
     )
     
     return PURCHASE
 
-# ========== Step functions ==========
+# ========== Step 2 ==========
 async def step1_product(update: Update, context):
     user_id = update.effective_user.id
-    text = update.message.text
     if user_id not in user_data:
         user_data[user_id] = {}
-    user_data[user_id]["product"] = text
-    await update.message.reply_text("💰 Step 2/8: Purchase price (USD per ton)?\nExample: 105")
+    user_data[user_id]["product"] = update.message.text
+    await update.message.reply_text("💰 Step 2: Purchase price (USD/ton)?\nExample: 105")
     return PURCHASE
 
 async def step2_purchase(update: Update, context):
@@ -182,21 +122,16 @@ async def step2_purchase(update: Update, context):
         await update.message.reply_text("❌ Please enter a valid number")
         return PURCHASE
     
-    await update.message.reply_text("📊 Fetching exchange rates from free market...")
-    
-    usd_rial = get_usd_rial_rate_free_market()
+    usd_rial = get_usd_rial_rate()
     usd_dirham = get_usd_dirham_rate()
-    aed_rial = get_aed_to_rial_rate()
     
     user_data[user_id]["suggested_rial_rate"] = usd_rial
     user_data[user_id]["suggested_dirham_rate"] = usd_dirham
-    user_data[user_id]["suggested_aed_rial_rate"] = aed_rial
     
     await update.message.reply_text(
-        f"💱 *Step 3/8:* USD to RIAL exchange rate (Free Market)?\n\n"
-        f"💰 Current free market rate: `{usd_rial:,.0f}` Rials/USD\n"
-        f"📝 Send `0` to use market rate or enter custom:",
-        parse_mode="Markdown"
+        f"💱 Step 3: USD to RIAL rate?\n"
+        f"Current: {usd_rial:,.0f}\n"
+        f"Send 0 to use current:"
     )
     return RATE_RIAL
 
@@ -209,15 +144,14 @@ async def step3_rate_rial(update: Update, context):
         else:
             user_data[user_id]["rate_rial"] = val
     except:
-        await update.message.reply_text("❌ Please enter a valid number")
+        await update.message.reply_text("❌ Invalid number")
         return RATE_RIAL
     
     usd_dirham = user_data[user_id]["suggested_dirham_rate"]
     await update.message.reply_text(
-        f"💱 *Step 4/8:* USD to DIRHAM exchange rate?\n\n"
-        f"💰 Current market rate: `{usd_dirham:.2f}` Dirhams/USD\n"
-        f"📝 Send `0` to use market rate or enter custom:",
-        parse_mode="Markdown"
+        f"💱 Step 4: USD to DIRHAM rate?\n"
+        f"Current: {usd_dirham:.2f}\n"
+        f"Send 0 to use current:"
     )
     return RATE_DIRHAM
 
@@ -230,10 +164,10 @@ async def step4_rate_dirham(update: Update, context):
         else:
             user_data[user_id]["rate_dirham"] = val
     except:
-        await update.message.reply_text("❌ Please enter a valid number")
+        await update.message.reply_text("❌ Invalid number")
         return RATE_DIRHAM
     
-    await update.message.reply_text("⚖️ *Step 5/8:* Tonnage (tons)?\n📝 Example: `5000`", parse_mode="Markdown")
+    await update.message.reply_text("⚖️ Step 5: Tonnage (tons)?\nExample: 5000")
     return TONNAGE
 
 async def step5_tonnage(update: Update, context):
@@ -241,9 +175,9 @@ async def step5_tonnage(update: Update, context):
     try:
         user_data[user_id]["tonnage"] = float(update.message.text)
     except:
-        await update.message.reply_text("❌ Please enter a valid number")
+        await update.message.reply_text("❌ Invalid number")
         return TONNAGE
-    await update.message.reply_text("🚢 *Step 6/8:* Freight cost (USD per ton)?\n📝 Example: `18`", parse_mode="Markdown")
+    await update.message.reply_text("🚢 Step 6: Freight cost (USD/ton)?\nExample: 18")
     return FREIGHT
 
 async def step6_freight(update: Update, context):
@@ -251,9 +185,9 @@ async def step6_freight(update: Update, context):
     try:
         user_data[user_id]["freight"] = float(update.message.text)
     except:
-        await update.message.reply_text("❌ Please enter a valid number")
+        await update.message.reply_text("❌ Invalid number")
         return FREIGHT
-    await update.message.reply_text("⚓ *Step 7/8:* Port and loading cost (USD per ton)?\n📝 Example: `4`", parse_mode="Markdown")
+    await update.message.reply_text("⚓ Step 7: Port cost (USD/ton)?\nExample: 4")
     return PORT
 
 async def step7_port(update: Update, context):
@@ -261,10 +195,10 @@ async def step7_port(update: Update, context):
     try:
         user_data[user_id]["port"] = float(update.message.text)
     except:
-        await update.message.reply_text("❌ Please enter a valid number")
+        await update.message.reply_text("❌ Invalid number")
         return PORT
 
-    # Calculate profit
+    # Calculate
     data = user_data[user_id]
     t = data["tonnage"]
     purchase = data["purchase"]
@@ -273,54 +207,45 @@ async def step7_port(update: Update, context):
     freight = data.get("freight", 0)
     port = data.get("port", 0)
     
-    # FOB = purchase + 20% profit margin
     fob = purchase * 1.2
-    
     revenue_usd = fob * t
     purchase_cost = purchase * t
     freight_cost = freight * t
     port_cost = port * t
     total_cost = purchase_cost + freight_cost + port_cost
     profit_usd = revenue_usd - total_cost
-    
     profit_rial = profit_usd * rate_rial
     profit_dirham = profit_usd * rate_dirham
     
     now = datetime.now().strftime("%b %d, %Y - %H:%M")
 
     result = (
-        f"📊 *=== PROFIT CALCULATION ===* 📊\n"
-        f"📅 {now}\n"
-        f"{'─' * 40}\n"
-        f"📦 *Product:* {data['product']}\n"
-        f"⚖️ *Tonnage:* {t:,.0f} tons\n"
-        f"💰 *Purchase:* ${purchase:.2f}/ton\n"
-        f"💵 *FOB:* ${fob:.2f}/ton\n"
-        f"💱 *Exchange Rate (USD/RIAL):* {rate_rial:,.0f}\n"
-        f"{'─' * 40}\n"
-        f"💲 *Revenue:* ${revenue_usd:,.0f}\n"
-        f"📥 *Purchase cost:* ${purchase_cost:,.0f}\n"
-        f"🚢 *Freight:* ${freight_cost:,.0f}\n"
-        f"⚓ *Port costs:* ${port_cost:,.0f}\n"
-        f"📊 *Total Cost:* ${total_cost:,.0f}\n"
-        f"{'─' * 40}\n"
-        f"✅ *Net Profit (USD):* ${profit_usd:,.0f}\n"
-        f"✅ *Net Profit (RIALS):* {profit_rial:,.0f} Rials\n"
-        f"✅ *Net Profit (DIRHAM):* {profit_dirham:,.0f} Dirhams\n"
-        f"{'─' * 40}"
+        f"📊 PROFIT CALCULATION 📊\n"
+        f"{now}\n"
+        f"{'-'*30}\n"
+        f"Product: {data['product']}\n"
+        f"Tonnage: {t:,.0f} tons\n"
+        f"Purchase: ${purchase:.2f}/ton\n"
+        f"FOB: ${fob:.2f}/ton\n"
+        f"{'-'*30}\n"
+        f"Revenue: ${revenue_usd:,.0f}\n"
+        f"Cost: ${total_cost:,.0f}\n"
+        f"{'-'*30}\n"
+        f"Profit USD: ${profit_usd:,.0f}\n"
+        f"Profit RIALS: {profit_rial:,.0f}\n"
+        f"Profit DIRHAM: {profit_dirham:,.0f}"
     )
 
-    await update.message.reply_text(result, parse_mode="Markdown")
+    await update.message.reply_text(result)
     del user_data[user_id]
     return ConversationHandler.END
 
-# ========== تابع مرحله - برای main.py/bot.py ==========
+# ========== Main step handler ==========
 async def profit_step(update: Update, context):
-    """پردازش مرحله به مرحله"""
     user_id = update.effective_user.id
     
     if user_id not in user_data:
-        await update.message.reply_text("❌ Please start over with /start")
+        await update.message.reply_text("❌ Start over with /start")
         return ConversationHandler.END
     
     data = user_data[user_id]
@@ -340,5 +265,5 @@ async def profit_step(update: Update, context):
     elif "port" not in data:
         return await step7_port(update, context)
     else:
-        await update.message.reply_text("✅ Calculation complete! Start again with /start")
+        await update.message.reply_text("✅ Done! Start again with /start")
         return ConversationHandler.END
