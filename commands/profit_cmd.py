@@ -9,30 +9,43 @@ PRODUCT, PURCHASE, FOB, RATE_RIAL, RATE_DIRHAM, TONNAGE, FREIGHT, PORT = range(8
 # In-memory database
 user_data = {}
 
-# ========== دریافت نرخ ارز ==========
+# ========== دریافت نرخ ارز از منبع پایدار ==========
 def get_usd_rial_rate():
-    """دریافت نرخ دلار به ریال از بازار آزاد"""
+    """
+    دریافت نرخ دلار به ریال از api.exchangerate.fun
+    این API رایگان، بدون محدودیت، و هر ساعت بروز میشه
+    """
     try:
-        response = requests.get("https://api.tgju.org/v1/price/price_dollar_rl", timeout=5)
+        response = requests.get("https://api.exchangerate.fun/latest?base=USD", timeout=5)
         if response.status_code == 200:
             data = response.json()
-            return float(data.get("price", 65000))
-    except:
-        pass
+            rial_rate = data.get("rates", {}).get("IRR")
+            if rial_rate:
+                return float(rial_rate)
+    except Exception as e:
+        print(f"Error fetching USD/IRR rate: {e}")
+    
+    # Fallback: نرخ تقریبی بازار آزاد
     return 65000
 
 def get_usd_dirham_rate():
-    """دریافت نرخ دلار به درهم امارات"""
+    """
+    دریافت نرخ دلار به درهم از api.exchangerate.fun
+    """
     try:
-        response = requests.get("https://api.exchangerate-api.com/v4/latest/USD", timeout=5)
+        response = requests.get("https://api.exchangerate.fun/latest?base=USD", timeout=5)
         if response.status_code == 200:
             data = response.json()
-            return float(data.get("rates", {}).get("AED", 3.67))
-    except:
-        pass
+            aed_rate = data.get("rates", {}).get("AED")
+            if aed_rate:
+                return float(aed_rate)
+    except Exception as e:
+        print(f"Error fetching USD/AED rate: {e}")
+    
+    # Fallback: نرخ تقریبی (1 دلار = 3.67 درهم)
     return 3.67
 
-# ========== تابع شروع - اصلاح شده ==========
+# ========== تابع شروع - پشتیبانی کامل از دکمه و پیام ==========
 async def profit_start(update: Update, context):
     """شروع فرآیند محاسبه سود - هم برای دکمه و هم برای پیام مستقیم کار میکنه"""
     
@@ -48,6 +61,7 @@ async def profit_start(update: Update, context):
     else:
         return PRODUCT
     
+    # مقداردهی اولیه دیتابیس کاربر
     user_data[user_id] = {}
     
     keyboard = [
@@ -101,6 +115,8 @@ async def product_selection(update: Update, context):
 async def step1_product(update: Update, context):
     user_id = update.effective_user.id
     text = update.message.text
+    if user_id not in user_data:
+        user_data[user_id] = {}
     user_data[user_id]["product"] = text
     await update.message.reply_text("💰 Step 2/8: Purchase price (USD per ton)?\nExample: 105")
     return PURCHASE
@@ -201,7 +217,7 @@ async def step7_port(update: Update, context):
     freight = data.get("freight", 0)
     port = data.get("port", 0)
     
-    # FOB = purchase + 20% profit margin
+    # FOB = purchase + 20% profit margin (قابل تنظیم)
     fob = purchase * 1.2
     
     revenue_usd = fob * t
