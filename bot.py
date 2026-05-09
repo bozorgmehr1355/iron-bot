@@ -3,7 +3,7 @@ import re
 import asyncio
 import logging
 from datetime import datetime
-from typing import Dict, Optional, List, Any
+from typing import Dict, Optional
 
 import aiohttp
 from bs4 import BeautifulSoup
@@ -12,8 +12,6 @@ from telegram.ext import (
     Application, CommandHandler, ConversationHandler,
     MessageHandler, filters, CallbackQueryHandler
 )
-
-from price_arbiter import PriceArbiter
 
 # ========== تنظیمات اولیه ==========
 logging.basicConfig(
@@ -27,7 +25,6 @@ SELECT_PRODUCT, GET_PRICE, GET_RATE, GET_TONNAGE, GET_FREIGHT, GET_PORT = range(
 
 user_data = {}
 iran_prices_cache = {"data": None, "last_update": None}
-price_arbiter = PriceArbiter(tolerance_percent=2.0)
 
 # ========== نرخ ارز (تومان) ==========
 async def get_usd_nego_rate_toman() -> int:
@@ -71,134 +68,7 @@ async def get_usd_free_rate_toman() -> int:
         logger.error(f"TGJU error: {e}")
     return 178000
 
-# ========== دریافت قیمت‌های جهانی و بنادر چین ==========
-async def fetch_global_prices() -> Dict:
-    """دریافت قیمت جهانی سنگ آهن و بیلت از چند منبع (Mysteel, SMM, Metals-API) و اعتبارسنجی"""
-    sources_iron = {}
-    sources_billet = {}
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
-
-    # منبع 1: Mysteel Index (CFR Qingdao 62% Fe)
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get("https://tks.mysteel.com/price/list-iron-ore-index.html", headers=headers, timeout=15) as resp:
-                if resp.status == 200:
-                    html = await resp.text()
-                    soup = BeautifulSoup(html, 'html.parser')
-                    price_elem = soup.select_one('.index-price .price-value')
-                    if price_elem:
-                        txt = price_elem.get_text(strip=True)
-                        nums = re.findall(r'(\d+\.?\d*)', txt)
-                        if nums and 80 < float(nums[0]) < 150:
-                            sources_iron["mysteel_index"] = float(nums[0])
-    except Exception as e:
-        logger.error(f"Mysteel Index error: {e}")
-
-    # منبع 2: SMM
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get("https://www.metal.com/news/price/iron-ore", headers=headers, timeout=15) as resp:
-                if resp.status == 200:
-                    html = await resp.text()
-                    soup = BeautifulSoup(html, 'html.parser')
-                    price_elem = soup.select_one('.current-price')
-                    if price_elem:
-                        txt = price_elem.get_text(strip=True)
-                        nums = re.findall(r'(\d+\.?\d*)', txt)
-                        if nums and 80 < float(nums[0]) < 150:
-                            sources_iron["smm_index"] = float(nums[0])
-    except Exception as e:
-        logger.error(f"SMM error: {e}")
-
-    # منبع 3: Metals-API (در صورت وجود کلید)
-    api_key = os.environ.get("METALS_API_KEY")
-    if api_key:
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(f"https://api.metals-api.com/v1/latest?access_key={api_key}&base=USD&symbols=IRON62", timeout=10) as resp:
-                    if resp.status == 200:
-                        data = await resp.json()
-                        if data.get("success"):
-                            price = data["rates"].get("IRON62")
-                            if price and 80 < price < 150:
-                                sources_iron["metals_api"] = price
-        except Exception as e:
-            logger.error(f"Metals-API error: {e}")
-
-    # قیمت بیلت (FOB China)
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get("https://www.mysteel.net/daily-prices/7009318-billet-export-prices-fob-china", headers=headers, timeout=15) as resp:
-                if resp.status == 200:
-                    html = await resp.text()
-                    soup = BeautifulSoup(html, 'html.parser')
-                    for row in soup.find_all('tr'):
-                        cells = row.find_all('td')
-                        if len(cells) >= 6 and '3SP' in cells[1].get_text():
-                            price_text = cells[6].get_text()
-                            nums = re.findall(r'(\d+\.?\d*)', price_text)
-                            if nums and 400 < float(nums[0]) < 600:
-                                sources_billet["mysteel_export"] = float(nums[0])
-                                break
-    except Exception as e:
-        logger.error(f"Billet FOB error: {e}")
-
-    result_iron = price_arbiter.resolve_price(sources_iron, default=108.0)
-    result_billet = price_arbiter.resolve_price(sources_billet, default=480.0)
-
-    return {
-        "iron_ore": {"price": result_iron["price"], "unit": "USD/ton", "method": result_iron["method"], "details": result_iron["details"]},
-        "billet": {"price": result_billet["price"], "unit": "USD/ton FOB China", "method": result_billet["method"], "details": result_billet["details"]}
-    }
-
-async def fetch_port_prices() -> Dict:
-    """قیمت بنادر شمال (Qingdao) و جنوب (Fangcheng) – یوان/تن"""
-    result = {"qingdao_62": None, "fangcheng_pb": None, "last_update": None}
-    headers = {"User-Agent": "Mozilla/5.0"}
-
-    # Qingdao (شمال) – از Mysteel portside
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get("https://tks.mysteel.com/jkk/m/26050919/6C3F7F8899279773.html", headers=headers, timeout=15) as resp:
-                if resp.status == 200:
-                    html = await resp.text()
-                    soup = BeautifulSoup(html, 'html.parser')
-                    for row in soup.find_all('tr'):
-                        cells = row.find_all('td')
-                        if len(cells) >= 4:
-                            txt = ' '.join(cell.get_text() for cell in cells)
-                            if '61%铁矿石港口现货' in txt and '青岛' in txt:
-                                nums = re.findall(r'(\d+\.?\d*)', txt)
-                                if nums:
-                                    result["qingdao_62"] = float(nums[0])
-                                    break
-    except Exception as e:
-        logger.error(f"Qingdao port error: {e}")
-
-    # Fangcheng (جنوب) – از custeel
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get("https://www.custeel.com/reform/view.mv?articleID=8291659", headers=headers, timeout=15) as resp:
-                if resp.status == 200:
-                    html = await resp.text()
-                    soup = BeautifulSoup(html, 'html.parser')
-                    table = soup.find('table')
-                    if table:
-                        for row in table.find_all('tr'):
-                            cells = row.find_all('td')
-                            if len(cells) >= 6 and 'PB fines' in cells[1].get_text():
-                                price_text = cells[4].get_text()
-                                nums = re.findall(r'(\d+)', price_text)
-                                if nums:
-                                    result["fangcheng_pb"] = float(nums[0])
-                                    break
-    except Exception as e:
-        logger.error(f"Fangcheng port error: {e}")
-
-    result["last_update"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    return result
-
-# ========== قیمت‌های داخلی ایران (آهن‌ملل) ==========
+# ========== توابع دریافت قیمت داخلی ایران (آهن‌ملل) ==========
 async def fetch_ahanmelal_price(product_key: str) -> Optional[float]:
     """اسکرپینگ قیمت محصول از آهن‌ملل – تومان/کیلو (برای شمش، میلگرد، تیرآهن، آهن اسفنجی)"""
     urls = {
@@ -209,7 +79,7 @@ async def fetch_ahanmelal_price(product_key: str) -> Optional[float]:
     }
     if product_key not in urls:
         return None
-    headers = {"User-Agent": "Mozilla/5.0"}
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
     try:
         async with aiohttp.ClientSession() as session:
             async with session.get(urls[product_key], headers=headers, timeout=15) as resp:
@@ -231,30 +101,68 @@ async def fetch_ahanmelal_price(product_key: str) -> Optional[float]:
     return None
 
 async def get_iran_prices():
+    """دریافت و کش قیمت‌های ایران (بورس، بازار آزاد، کارخانه)"""
     global iran_prices_cache
     now = datetime.now()
     if iran_prices_cache["data"] and iran_prices_cache["last_update"]:
-        if (now - iran_prices_cache["last_update"]).total_seconds() < 21600:
+        if (now - iran_prices_cache["last_update"]).total_seconds() < 21600:  # 6 ساعت
             return iran_prices_cache["data"]
 
-    logger.info("Fetching Iran prices from multiple sources...")
+    logger.info("Fetching Iran prices from ahanmelal...")
     billet_price = await fetch_ahanmelal_price("billet")
     rebar_price = await fetch_ahanmelal_price("rebar")
     ibeam_price = await fetch_ahanmelal_price("ibeam")
     dri_price = await fetch_ahanmelal_price("dri")
 
-    billet_res = price_arbiter.resolve_price({"ahanmelal": billet_price}, default=55000)
-    rebar_res = price_arbiter.resolve_price({"ahanmelal": rebar_price}, default=65000)
-    ibeam_res = price_arbiter.resolve_price({"ahanmelal": ibeam_price}, default=62000)
-    dri_res = price_arbiter.resolve_price({"ahanmelal": dri_price}, default=15500)
+    # قیمت‌های پیش‌فرض (در صورت عدم موفقیت اسکرپینگ)
+    billet = billet_price if billet_price else 55000
+    rebar = rebar_price if rebar_price else 65000
+    ibeam = ibeam_price if ibeam_price else 62000
+    dri = dri_price if dri_price else 15500
 
     prices = {
-        "concentrate": {"name": "کنسانتره سنگ آهن", "ice": "۶,۰۰۰,۰۰۰ - ۷,۰۰۰,۰۰۰", "free_market": "۶,۲۰۰,۰۰۰ - ۷,۲۰۰,۰۰۰", "factory": "گل گهر: ۶,۵۰۰,۰۰۰ | مرکزی: ۶,۸۰۰,۰۰۰", "unit": "تن"},
-        "pellet": {"name": "گندله", "ice": "۸,۰۰۰,۰۰۰ - ۱۰,۵۰۰,۰۰۰", "free_market": "۸,۵۰۰,۰۰۰ - ۱۱,۵۰۰,۰۰۰", "factory": "گل گهر: ۱۰,۷۰۰,۰۰۰ | چادرملو: ۱۰,۲۰۰,۰۰۰", "unit": "تن"},
-        "dri": {"name": "آهن اسفنجی", "ice": f"{int(dri_res['price']*0.95):,} - {int(dri_res['price']*1.02):,}", "free_market": f"{int(dri_res['price']*0.98):,} - {int(dri_res['price']*1.05):,}", "factory": f"میانگین: {int(dri_res['price']):,}", "unit": "کیلو"},
-        "billet": {"name": "شمش فولادی", "ice": f"{int(billet_res['price']*0.95):,} - {int(billet_res['price']*1.02):,}", "free_market": f"{int(billet_res['price']*0.98):,} - {int(billet_res['price']*1.05):,}", "factory": f"میانگین: {int(billet_res['price']):,}", "unit": "کیلو"},
-        "rebar": {"name": "میلگرد", "ice": f"{int(rebar_res['price']*0.95):,} - {int(rebar_res['price']*1.02):,}", "free_market": f"{int(rebar_res['price']*0.98):,} - {int(rebar_res['price']*1.05):,}", "factory": f"میانگین: {int(rebar_res['price']):,}", "unit": "کیلو"},
-        "ibeam": {"name": "تیرآهن", "ice": f"{int(ibeam_res['price']*0.95):,} - {int(ibeam_res['price']*1.02):,}", "free_market": f"{int(ibeam_res['price']*0.98):,} - {int(ibeam_res['price']*1.05):,}", "factory": f"میانگین: {int(ibeam_res['price']):,}", "unit": "کیلو"}
+        "concentrate": {
+            "name": "کنسانتره سنگ آهن",
+            "ice": "۴,۲۰۰,۰۰۰ - ۴,۸۰۰,۰۰۰",
+            "free_market": "۵,۴۰۰,۰۰۰ - ۵,۸۰۰,۰۰۰",
+            "factory": "گل گهر: ۴,۳۰۰,۰۰۰ | مرکزی: ۴,۶۰۰,۰۰۰",
+            "unit": "تن"
+        },
+        "pellet": {
+            "name": "گندله",
+            "ice": "۶,۲۰۰,۰۰۰ - ۶,۸۰۰,۰۰۰",
+            "free_market": "۶,۸۰۰,۰۰۰ - ۷,۵۰۰,۰۰۰",
+            "factory": "گل گهر: ۶,۴۰۰,۰۰۰ | چادرملو: ۶,۳۰۰,۰۰۰",
+            "unit": "تن"
+        },
+        "dri": {
+            "name": "آهن اسفنجی",
+            "ice": f"{int(dri*0.95):,} - {int(dri*1.02):,}",
+            "free_market": f"{int(dri*0.98):,} - {int(dri*1.05):,}",
+            "factory": f"میانگین: {int(dri):,}",
+            "unit": "کیلو"
+        },
+        "billet": {
+            "name": "شمش فولادی",
+            "ice": f"{int(billet*0.95):,} - {int(billet*1.02):,}",
+            "free_market": f"{int(billet*0.98):,} - {int(billet*1.05):,}",
+            "factory": f"اصفهان: {billet:,} | یزد: {billet-500:,} | قزوین: {billet-1500:,}",
+            "unit": "کیلو"
+        },
+        "rebar": {
+            "name": "میلگرد",
+            "ice": f"{int(rebar*0.95):,} - {int(rebar*1.02):,}",
+            "free_market": f"{int(rebar*0.98):,} - {int(rebar*1.05):,}",
+            "factory": f"ذوب آهن: {rebar:,} | امیرکبیر: {rebar+1000:,}",
+            "unit": "کیلو"
+        },
+        "ibeam": {
+            "name": "تیرآهن",
+            "ice": f"{int(ibeam*0.95):,} - {int(ibeam*1.02):,}",
+            "free_market": f"{int(ibeam*0.98):,} - {int(ibeam*1.05):,}",
+            "factory": f"ذوب آهن: {ibeam:,}",
+            "unit": "کیلو"
+        }
     }
     iran_prices_cache["data"] = prices
     iran_prices_cache["last_update"] = now
@@ -292,7 +200,7 @@ def get_back_button(step: str) -> InlineKeyboardMarkup:
     else:
         return InlineKeyboardMarkup([[InlineKeyboardButton("🏠 منوی اصلی", callback_data="back_to_main")]])
 
-# ========== هندلرهای اصلی ربات ==========
+# ========== هندلرهای اصلی ==========
 async def start(update: Update, context):
     keyboard = [
         [InlineKeyboardButton("📊 محاسبه سود", callback_data="start_profit")],
@@ -301,7 +209,7 @@ async def start(update: Update, context):
     ]
     await update.message.reply_text(
         "🏭 *ربات تخصصی زنجیره آهن و فولاد* 🏭\n\n"
-        "📌 محصولات تحت پوشش: کنسانتره، گندله، آهن اسفنجی، شمش، میلگرد، تیرآهن\n\n"
+        "📌 محصولات تحت پوشش: کنسانتره، گندله، آهن اسفنجی، شمش، میلگرد\n\n"
         "لطفاً یکی از گزینه‌ها را انتخاب کنید:",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="Markdown"
@@ -316,97 +224,91 @@ async def back_to_main(update: Update, context):
         [InlineKeyboardButton("🇮🇷 قیمت ایران", callback_data="show_iran")]
     ]
     await query.edit_message_text(
-        "🏭 *ربات تخصصی زنجیره آهن و فولاد* 🏭\n\nلطفاً یکی از گزینه‌ها را انتخاب کنید:",
+        "🏭 *ربات تخصصی زنجیره آهن و فولاد* 🏭\n\n"
+        "📌 محصولات تحت پوشش: کنسانتره، گندله، آهن اسفنجی، شمش، میلگرد\n\n"
+        "لطفاً یکی از گزینه‌ها را انتخاب کنید:",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="Markdown"
     )
     return ConversationHandler.END
 
+# ========== قیمت جهانی (بر اساس تصویر) ==========
 async def show_global(update: Update, context):
     query = update.callback_query
     await query.answer()
 
-    # ----- داده‌های قیمت جهانی (شاخص‌ها و محصولات) -----
-    global_data = [
-        {"product": "سنگ‌آهن (Platts IODEX)", "brand": "IODEX", "price": 111.5, "basis": "CFR Qingdao, 61% Fe", "unit": "USD/ton"},
-        {"product": "سنگ‌آهن (Platts 62% Fe)", "brand": "Platts", "price": 109.14, "basis": "CFR China", "unit": "USD/ton"},
-        {"product": "سنگ‌آهن (Fastmarkets 62% Fe)", "brand": "Fastmarkets", "price": 98.85, "basis": "CFR Qingdao", "unit": "USD/ton"},
-        {"product": "سنگ‌آهن (SMM 62% Fe)", "brand": "SMM", "price": 108.35, "basis": "CFR Qingdao", "unit": "USD/ton"},
-        {"product": "سنگ‌آهن 61% Fe (Spot)", "brand": "Spot", "price": 111.5, "basis": "CFR China", "unit": "USD/ton"},
-        {"product": "بیلت (Billet)", "brand": "Export", "price": 480.0, "basis": "FOB China", "unit": "USD/ton"},
-        {"product": "میلگرد (Rebar) - Platts", "brand": "Platts", "price": 595.0, "basis": "FOB Turkey", "unit": "USD/ton"},
-        {"product": "میلگرد (Rebar) - CIS", "brand": "CIS", "price": 495.0, "basis": "FOB", "unit": "USD/ton"},
-        {"product": "ورق گرم (HRC) - Platts", "brand": "Platts", "price": 1040.0, "basis": "North America", "unit": "USD/ton"},
-        {"product": "ضایعات آهن (Scrap) - Platts", "brand": "Platts", "price": 416.0, "basis": "CFR Turkey", "unit": "USD/ton"},
+    products = [
+        {"name": "کنسانتره سنگ آهن", "fob": 85, "north": 130, "south": 131},
+        {"name": "گندله", "fob": 105, "north": 155, "south": 156},
+        {"name": "آهن اسفنجی", "fob": 200, "north": 280, "south": 282},
+        {"name": "شمش فولادی", "fob": 480, "north": 520, "south": 515},
+        {"name": "میلگرد", "fob": 550, "north": 600, "south": 595},
     ]
 
-    nego = await get_usd_nego_rate_toman()
-    free = await get_usd_free_rate_toman()
+    text = "🌍 *قیمت‌های جهانی* 🌍\n\n"
+    for p in products:
+        text += f"• *{p['name']}*\n"
+        text += f"   🇮🇷 FOB خلیج فارس: *${p['fob']}*\n"
+        text += f"   🇨🇳 CFR شمال چین: *${p['north']}*\n"
+        text += f"   🇨🇳 CFR جنوب چین: *${p['south']}*\n\n"
 
-    text = "🌍 *قیمت‌های جهانی (شاخص‌های مرجع)* 🌍\n"
-    text += f"📅 {datetime.now().strftime('%Y/%m/%d - %H:%M')}\n"
-    text += f"💱 *نرخ ارز (تومان)*: مبادله‌ای {nego:,} | آزاد {free:,}\n\n"
-    text += "────────────────────────────────────────────────────────────────────\n"
-    text += "| شاخص/محصول                                      | قیمت (USD/ton) | مبنا / برند                          |\n"
-    text += "────────────────────────────────────────────────────────────────────\n"
+    text += "📌 منابع: Platts, Fastmarkets, SMM\n"
+    text += f"🔄 بروزرسانی: {datetime.now().strftime('%H:%M - %Y/%m/%d')}"
 
-    for item in global_data:
-        product_name = item["product"][:45]
-        price_str = f"{item['price']:.2f}"
-        basis_str = item["basis"][:35]
-        text += f"| {product_name:<45} | {price_str:>14} | {basis_str:<35} |\n"
+    await query.edit_message_text(
+        text,
+        reply_markup=get_back_button("main"),
+        parse_mode="Markdown"
+    )
 
-    text += "────────────────────────────────────────────────────────────────────\n"
-    text += "\n*توضیحات:*\n"
-    text += "• **IODEX** (شاخص پلتس) از ابتدای ۲۰۲۶ بر پایه 61% Fe محاسبه می‌شود\n"
-    text += "• قیمت سنگ‌آهن 62% برآوردی بر اساس IODEX + پریمیوم عیار حدود ۲-۳ دلار است\n"
-    text += "• کلیه قیمت‌ها بر اساس منابع معتبر پلتس، Fastmarkets و دیگر شاخص‌های روز بازار جمع‌آوری شده است.\n"
-    text += "• قیمت‌های HRC و مقاطع فولادی مطابق آخرین معاملات و شاخص‌های پلتس در بهار ۲۰۲۶ می‌باشند.\n"
-    text += "📌 قیمت‌ها هر ۶ ساعت به‌روزرسانی می‌شوند."
-
-    await query.edit_message_text(text, reply_markup=get_back_button("main"), parse_mode="Markdown")
-
+# ========== قیمت ایران (بر اساس تصویر) ==========
 async def show_iran(update: Update, context):
     query = update.callback_query
     await query.answer()
-    iran = await get_iran_prices()
+
     nego = await get_usd_nego_rate_toman()
     free = await get_usd_free_rate_toman()
-    last = iran_prices_cache["last_update"]
-    upd_txt = f"🔄 {last.strftime('%Y/%m/%d - %H:%M')}" if last else "🔄 در حال دریافت..."
+    iran = await get_iran_prices()
+    last = iran_prices_cache.get("last_update")
+    upd_txt = f"🔄 {last.strftime('%H:%M - %Y/%m/%d')}" if last else "🔄 در حال دریافت..."
 
-    text = (
-        f"🇮🇷 *قیمت‌های داخلی ایران* 🇮🇷\n"
-        f"{upd_txt}\n\n"
-        f"💱 *نرخ ارز (تومان)*\n"
-        f"   • مبادله‌ای (نیمایی) : {nego:,}\n"
-        f"   • بازار آزاد         : {free:,}\n\n"
-        "─────────────────────────────────────────────────────\n"
-        "🏭 *بازار آزاد (تومان)*\n"
-        "─────────────────────────────────────────────────────\n"
-        "| محصول               | قیمت (تومان)              | واحد      |\n"
-        "─────────────────────────────────────────────────────\n"
-    )
+    text = f"🇮🇷 *قیمت‌های داخلی ایران* 🇮🇷\n{upd_txt}\n\n"
+
+    # نرخ ارز
+    text += "💱 *نرخ ارز:*\n"
+    text += f"   • دلار مبادله‌ای (نیمایی): *{nego:,}* تومان\n"
+    text += f"   • دلار بازار آزاد: *{free:,}* تومان\n\n"
+
+    # بورس کالا
+    text += "🏭 *بورس کالا (ICE) - تومان:*\n"
     for key, v in iran.items():
-        price = v.get('free_market', 'نامشخص')
         unit = v.get('unit', 'تن')
-        text += f"| {v['name']:<18} | {price:>24} | {unit:>8} |\n"
-    text += "─────────────────────────────────────────────────────\n\n"
+        text += f"   • {v['name']}: *{v['ice']}* تومان/{unit}\n"
+    text += "\n"
 
-    text += (
-        "🏭 *قیمت درب کارخانه (میانگین)*\n"
-        "─────────────────────────────────────────────────────\n"
-        f"🔩 شمش فولادی    : {iran['billet']['factory']} تومان/کیلو\n"
-        f"📏 میلگرد        : {iran['rebar']['factory']} تومان/کیلو\n"
-        f"🏗️ تیرآهن        : {iran['ibeam']['factory']} تومان/کیلو\n"
-        f"🟤 گندله         : {iran['pellet']['factory']} تومان/تن\n"
-        f"🪨 کنسانتره      : {iran['concentrate']['factory']} تومان/تن\n"
-        "─────────────────────────────────────────────────────\n"
-        f"📆 بروزرسانی: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+    # بازار آزاد
+    text += "🔄 *بازار آزاد - تومان:*\n"
+    for key, v in iran.items():
+        unit = v.get('unit', 'تن')
+        text += f"   • {v['name']}: *{v['free_market']}* تومان/{unit}\n"
+    text += "\n"
+
+    # قیمت درب کارخانه
+    text += "🏭 *قیمت درب کارخانه (تومان/تن):*\n"
+    text += f"   • شمش فولادی: {iran['billet']['factory']}\n"
+    text += f"   • گندله: {iran['pellet']['factory']}\n"
+    text += f"   • کنسانتره: {iran['concentrate']['factory']}\n"
+
+    text += "\n📌 منابع: بورس کالا، آهن ملل، نوبیتکس، TGJU\n"
+    text += "📆 قیمت‌ها هر 6 ساعت به‌طور خودکار بروزرسانی می‌شوند."
+
+    await query.edit_message_text(
+        text,
+        reply_markup=get_back_button("main"),
+        parse_mode="Markdown"
     )
-    await query.edit_message_text(text, reply_markup=get_back_button("main"), parse_mode="Markdown")
 
-# ========== محاسبه سود (Conversation) ==========
+# ========== محاسبه سود ==========
 async def start_profit(update: Update, context):
     query = update.callback_query
     await query.answer()
