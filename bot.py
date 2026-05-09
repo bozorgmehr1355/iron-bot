@@ -4,8 +4,9 @@ import os
 import requests
 from datetime import datetime
 import asyncio
-import json
-import re
+
+# ✅ import درست از database
+import database
 from database import init_db, add_alert, get_active_alerts, deactivate_alert, save_price
 
 # States
@@ -15,9 +16,9 @@ user_data = {}
 
 # ========== دریافت نرخ دقیق دلار بازار آزاد ==========
 def get_usd_rial_rate():
-    """دریافت نرخ دقیق دلار از منابع معتبر با قابلیت Fallback"""
+    """دریافت نرخ دقیق دلار از منابع معتبر"""
     
-    # منبع اول: Nobitex (صرافی آنلاین معتبر ایران)
+    # منبع اول: Nobitex
     try:
         r = requests.get("https://api.nobitex.ir/v2/trades", timeout=5)
         if r.status_code == 200:
@@ -25,167 +26,57 @@ def get_usd_rial_rate():
             price = float(data.get("stats", {}).get("USDT-IRT", {}).get("latest", 0))
             if price > 0:
                 return price
-    except Exception as e:
-        print(f"Nobitex error: {e}")
+    except:
+        pass
     
-    # منبع دوم: TGJU (سایت طلا و ارز)
+    # منبع دوم: TGJU
     try:
         r = requests.get("https://api.tgju.org/v1/price/price_dollar_rl", timeout=5)
         if r.status_code == 200:
             data = r.json()
-            price = data.get("price", "0").replace(",", "")
-            if price and int(price) > 0:
-                return int(price)
-    except Exception as e:
-        print(f"TGJU error: {e}")
-    
-    # منبع سوم: Alanchand (منبع پشتیبان)
-    try:
-        r = requests.get("https://api.alanchand.com", timeout=5)
-        if r.status_code == 200:
-            data = r.json()
-            price = data.get("usd", {}).get("price", 0)
+            price_str = data.get("price", "0").replace(",", "")
+            price = int(price_str)
             if price > 0:
-                return int(price)
-    except Exception as e:
-        print(f"Alanchand error: {e}")
+                return price
+    except:
+        pass
     
-    # در صورت عدم دسترسی به هیچ منبعی، نرخ پیش‌فرض (نیاز به بروزرسانی دستی)
+    # نرخ پیش‌فرض
     return 65000
 
-# ========== دریافت قیمت محصولات از منابع معتبر ==========
-def get_iron_ore_price():
-    """دریافت قیمت سنگ آهن 62% از منابع معتبر"""
-    # در صورت داشتن API کلید Fastmarkets یا Platts
-    try:
-        api_key = os.environ.get("COMMODITIES_API_KEY")
-        if api_key:
-            r = requests.get(f"https://api.metalpriceapi.com/v1/latest?api_key={api_key}&base=USD&symbols=IRON62", timeout=5)
-            if r.status_code == 200:
-                data = r.json()
-                if data.get("success"):
-                    price = data.get("rates", {}).get("IRON62", 0)
-                    if price > 0:
-                        return price
-    except:
-        pass
-    
-    # قیمت پیش‌فرض (نیاز به بروزرسانی دستی)
-    return 112.8
-
-def get_fe65_price():
-    """دریافت قیمت Fe 65%"""
-    try:
-        api_key = os.environ.get("COMMODITIES_API_KEY")
-        if api_key:
-            r = requests.get(f"https://api.metalpriceapi.com/v1/latest?api_key={api_key}&base=USD&symbols=IRON65", timeout=5)
-            if r.status_code == 200:
-                data = r.json()
-                if data.get("success"):
-                    price = data.get("rates", {}).get("IRON65", 0)
-                    if price > 0:
-                        return price
-    except:
-        pass
-    
-    return 136.0
-
-def get_pellet_price():
-    """دریافت قیمت گندله"""
-    try:
-        api_key = os.environ.get("COMMODITIES_API_KEY")
-        if api_key:
-            r = requests.get(f"https://api.metalpriceapi.com/v1/latest?api_key={api_key}&base=USD&symbols=PELLET", timeout=5)
-            if r.status_code == 200:
-                data = r.json()
-                if data.get("success"):
-                    price = data.get("rates", {}).get("PELLET", 0)
-                    if price > 0:
-                        return price
-    except:
-        pass
-    
-    return 157.5
-
-def get_billet_price():
-    """دریافت قیمت بیلت"""
-    try:
-        api_key = os.environ.get("COMMODITIES_API_KEY")
-        if api_key:
-            r = requests.get(f"https://api.metalpriceapi.com/v1/latest?api_key={api_key}&base=USD&symbols=STEEL", timeout=5)
-            if r.status_code == 200:
-                data = r.json()
-                if data.get("success"):
-                    price = data.get("rates", {}).get("STEEL", 0)
-                    if price > 0:
-                        return price
-    except:
-        pass
-    
-    return 525.0
-
-def get_concentrate_price():
-    """دریافت قیمت کنسانتره آهن"""
-    # قیمت کنسانتره معمولاً کمی بالاتر از سنگ آهن 62% است
-    iron_price = get_iron_ore_price()
-    return iron_price + 22.0
-
-# ========== قیمت‌های جهانی محصولات (مطابق منابع معتبر) ==========
+# ========== قیمت‌های جهانی محصولات ==========
 def get_global_prices():
-    """دریافت قیمت‌های به‌روز همه محصولات"""
-    rate = get_usd_rial_rate()
-    
-    iron62 = get_iron_ore_price()
-    fe65 = get_fe65_price()
-    pellet = get_pellet_price()
-    billet = get_billet_price()
-    concentrate = get_concentrate_price()
-    
+    """قیمت‌های جهانی محصولات (فقط دلار)"""
     return {
         "iron_ore_62": {
             "name": "سنگ آهن 62%",
-            "global": iron62,
-            "north": iron62 - 1.3,
-            "south": iron62 - 0.8,
-            "north_rial": int((iron62 - 1.3) * rate),
-            "south_rial": int((iron62 - 0.8) * rate),
-            "global_rial": int(iron62 * rate)
+            "global": 112.8,
+            "north": 111.5,
+            "south": 112.0
         },
         "fe_65": {
             "name": "Fe 65%",
-            "global": fe65,
-            "north": fe65 - 1.0,
-            "south": fe65 - 0.5,
-            "north_rial": int((fe65 - 1.0) * rate),
-            "south_rial": int((fe65 - 0.5) * rate),
-            "global_rial": int(fe65 * rate)
+            "global": 136.0,
+            "north": 135.0,
+            "south": 135.5
         },
         "concentrate": {
             "name": "کنسانتره آهن",
-            "global": concentrate,
-            "north": concentrate - 1.0,
-            "south": concentrate - 0.5,
-            "north_rial": int((concentrate - 1.0) * rate),
-            "south_rial": int((concentrate - 0.5) * rate),
-            "global_rial": int(concentrate * rate)
+            "global": 134.8,
+            "north": 134.0,
+            "south": 134.5
         },
         "pellet": {
             "name": "گندله",
-            "global": pellet,
-            "north": pellet - 1.0,
-            "south": pellet + 0.5,
-            "north_rial": int((pellet - 1.0) * rate),
-            "south_rial": int((pellet + 0.5) * rate),
-            "global_rial": int(pellet * rate)
+            "global": 157.5,
+            "north": 156.5,
+            "south": 158.0
         },
         "billet": {
             "name": "بیلت",
-            "global": billet,
-            "north": billet + 5,
-            "south": billet - 5,
-            "north_rial": int((billet + 5) * rate),
-            "south_rial": int((billet - 5) * rate),
-            "global_rial": int(billet * rate)
+            "global": 525.0,
+            "north": 530.0,
+            "south": 520.0
         }
     }
 
@@ -201,7 +92,7 @@ def get_global_product_price(product_name):
 async def check_alerts(app):
     while True:
         try:
-            await asyncio.sleep(900)  # 15 دقیقه
+            await asyncio.sleep(900)
             alerts = get_active_alerts()
             for alert in alerts:
                 alert_id, user_id, product, port, condition, target = alert
@@ -222,7 +113,7 @@ async def check_alerts(app):
                                     text=f"🚨 *هشدار قیمتی!*\n\n"
                                          f"📦 محصول: {product}\n"
                                          f"📍 بندر: {port}\n"
-                                         f"🎯 شرط: {condition} {target}\n"
+                                         f"🎯 شرط: {condition} {target} دلار\n"
                                          f"💰 قیمت فعلی: {current_price} دلار\n"
                                          f"⏰ {datetime.now().strftime('%Y/%m/%d - %H:%M')}",
                                     parse_mode="Markdown"
@@ -243,11 +134,6 @@ async def start(update: Update, context):
     ]
     await update.message.reply_text(
         "🏭 *ربات تخصصی سنگ آهن و فلزات* 🏭\n\n"
-        "📌 *قابلیت‌ها:*\n"
-        "• دریافت قیمت‌های لحظه‌ای جهانی\n"
-        "• محاسبه دقیق سود با نرخ ارز واقعی\n"
-        "• تنظیم هشدار قیمتی هوشمند\n"
-        "• پشتیبانی از محصولات: سنگ آهن، کنسانتره، گندله، بیلت\n\n"
         "لطفاً یکی از گزینه‌ها را انتخاب کنید:",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="Markdown"
@@ -263,8 +149,7 @@ async def global_price(update: Update, context):
     
     text = f"🌍 *قیمت‌های جهانی و بنادر چین* 🌍\n"
     text += f"🔄 آخرین به‌روزرسانی: {datetime.now().strftime('%Y/%m/%d - %H:%M')}\n"
-    text += f"💱 نرخ دلار آزاد: **{rate:,.0f} ریال**\n"
-    text += f"📊 منبع: نوبیتکس / TGJU / متال‌پرایس\n\n"
+    text += f"💱 نرخ دلار آزاد: **{rate:,.0f} ریال**\n\n"
     
     text += f"{'═' * 35}\n\n"
     
@@ -281,9 +166,9 @@ async def global_price(update: Update, context):
             icon = "🔩"
         
         text += f"{icon} *{data['name']}*\n"
-        text += f"   جهانی: **${data['global']:,.1f}** ≈ {data['global_rial']:,} ریال/تن\n"
-        text += f"   📍 شمال: ${data['north']:,.1f} ≈ {data['north_rial']:,} ریال\n"
-        text += f"   📍 جنوب: ${data['south']:,.1f} ≈ {data['south_rial']:,} ریال\n\n"
+        text += f"   جهانی: **${data['global']:,.1f}**\n"
+        text += f"   📍 شمال: ${data['north']:,.1f}\n"
+        text += f"   📍 جنوب: ${data['south']:,.1f}\n\n"
     
     # تحلیل سریع
     iron62 = prices["iron_ore_62"]["global"]
@@ -395,14 +280,12 @@ async def product_choice(update: Update, context):
     
     user_data[user_id]["product"] = product_name
     product_data = get_global_product_price(product_name)
-    rate = get_usd_rial_rate()
     
     if product_data:
         text = f"📊 *محاسبه سود* – *{product_name}*\n\n"
         text += f"💰 *قیمت جهانی لحظه‌ای:*\n"
-        text += f"   └ بندر شمال: *{product_data['north']:,.1f}* دلار/تن ≈ {product_data['north_rial']:,} ریال/تن\n"
-        text += f"   └ بندر جنوب: *{product_data['south']:,.1f}* دلار/تن ≈ {product_data['south_rial']:,} ریال/تن\n\n"
-        text += f"💱 *نرخ دلار آزاد:* {rate:,.0f} ریال\n\n"
+        text += f"   └ بندر شمال: *{product_data['north']:,.1f}* دلار/تن\n"
+        text += f"   └ بندر جنوب: *{product_data['south']:,.1f}* دلار/تن\n\n"
         text += f"✏️ *قیمت خرید خود* را به دلار وارد کنید:"
     else:
         text = f"📊 *محاسبه سود*\n\n✏️ *قیمت خرید خود* را به دلار وارد کنید:"
@@ -497,7 +380,6 @@ async def get_port(update: Update, context):
         port = d["port"]
         rate_rial = d["rate_rial"]
         
-        # سود 20 درصدی فرضی
         fob = purchase * 1.2
         revenue_usd = fob * t
         total_cost_usd = (purchase + freight + port) * t
@@ -589,8 +471,7 @@ def main():
     
     app.post_init = post_init
     
-    print("🤖 ربات روشن شد و آماده به کار است!")
-    print(f"📅 زمان شروع: {datetime.now().strftime('%Y/%m/%d - %H:%M:%S')}")
+    print("🤖 ربات روشن شد")
     app.run_polling()
 
 if __name__ == "__main__":
