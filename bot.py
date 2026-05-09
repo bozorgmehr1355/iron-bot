@@ -4,7 +4,7 @@ import os
 import requests
 from datetime import datetime
 import asyncio
-from bs4 import BeautifulSoup
+import json
 import re
 
 # States
@@ -12,8 +12,22 @@ SELECT_PRODUCT, GET_PRICE, GET_RATE, GET_TONNAGE, GET_FREIGHT, GET_PORT = range(
 
 user_data = {}
 
-# ========== نرخ ارز ==========
-def get_usd_rial_rate():
+# ========== نرخ دلار مبادله‌ای (نیمایی) ==========
+def get_usd_nego_rate():
+    """نرخ دلار مبادله‌ای (نیمایی) - سامانه سنا"""
+    try:
+        r = requests.get("https://www.tgju.org/sana/", timeout=10)
+        if r.status_code == 200:
+            # استخراج از متن صفحه (در صورت نیاز)
+            match = re.search(r'(\d{1,3}(?:,\d{3})*)\s*ریال', r.text)
+            if match:
+                return int(match.group(1).replace(',', ''))
+    except:
+        pass
+    return 1468000  # نرخ پیش‌فرض (146,800 تومان)
+
+# ========== نرخ دلار بازار آزاد ==========
+def get_usd_free_rate():
     try:
         r = requests.get("https://api.nobitex.ir/v2/trades", timeout=5)
         if r.status_code == 200:
@@ -33,7 +47,12 @@ def get_usd_rial_rate():
                 return price
     except:
         pass
-    return 1468000  # نرخ مبادله‌ای (تومان 146,800)
+    return 1780000  # نرخ پیش‌فرض بازار آزاد (178,000 تومان)
+
+# ========== نرخ ارز برای محاسبه سود (قابل انتخاب توسط کاربر) ==========
+def get_default_rate():
+    """نرخ پیش‌فرض - کاربر می‌تواند انتخاب کند"""
+    return 1468000  # نرخ نیمایی پیش‌فرض
 
 # ========== قیمت‌های جهانی ==========
 def get_global_prices():
@@ -49,72 +68,40 @@ def get_global_prices():
 def get_iran_prices():
     """دریافت قیمت محصولات از بازار ایران (بورس + بازار آزاد + کارخانه‌ها)"""
     
-    # داده‌های پایه (بر اساس آخرین اطلاعات اردیبهشت ۱۴۰۵)
     prices = {
         "concentrate": {
             "name": "کنسانتره سنگ آهن",
             "ice": "۴,۲۰۰,۰۰۰ - ۴,۸۰۰,۰۰۰",
             "free_market": "۵,۴۰۰,۰۰۰ - ۵,۸۰۰,۰۰۰",
-            "factory": {
-                "گل گهر": "۴,۳۰۰,۰۰۰",
-                "معدن سنگ آهن مرکزی": "۴,۶۰۰,۰۰۰"
-            }
+            "factory": "گل گهر: ۴,۳۰۰,۰۰۰ | مرکزی: ۴,۶۰۰,۰۰۰"
         },
         "pellet": {
             "name": "گندله",
             "ice": "۶,۲۰۰,۰۰۰ - ۶,۸۰۰,۰۰۰",
             "free_market": "۶,۸۰۰,۰۰۰ - ۷,۵۰۰,۰۰۰",
-            "factory": {
-                "گل گهر": "۶,۴۰۰,۰۰۰",
-                "چادرملو": "۶,۳۰۰,۰۰۰"
-            }
+            "factory": "گل گهر: ۶,۴۰۰,۰۰۰ | چادرملو: ۶,۳۰۰,۰۰۰"
         },
         "dri": {
             "name": "آهن اسفنجی",
             "ice": "۱۴,۸۰۰ - ۱۵,۵۰۰",
             "free_market": "۱۶,۰۰۰ - ۱۶,۸۰۰",
-            "factory": {},
+            "factory": "-",
             "unit": "کیلو"
         },
         "billet": {
             "name": "شمش فولادی",
             "ice": "۴۱,۰۰۰ - ۴۴,۰۰۰",
             "free_market": "۴۳,۰۰۰ - ۴۶,۰۰۰",
-            "factory": {
-                "فولاد اصفهان": "۴۳,۰۹۱",
-                "فولاد یزد": "۴۳,۰۰۰",
-                "فولاد قزوین": "۴۰,۴۰۹",
-                "فولاد ساوه": "۴۰,۵۹۱",
-                "فولاد تبریز": "۴۰,۰۴۵",
-                "فولاد کاوه": "۴۲,۵۰۰"
-            }
+            "factory": "اصفهان: ۴۳,۰۹۱ | یزد: ۴۳,۰۰۰ | قزوین: ۴۰,۴۰۹ | کاوه: ۴۲,۵۰۰"
         },
         "rebar": {
             "name": "میلگرد",
             "ice": "۱۵,۸۰۰ - ۱۶,۸۰۰",
             "free_market": "۱۷,۳۰۰ - ۱۸,۰۰۰",
-            "factory": {},
+            "factory": "-",
             "unit": "کیلو"
         }
     }
-    
-    # تلاش برای دریافت قیمت شمش از آهن ملل
-    try:
-        url = "https://ahanmelal.com/steel-ingots/steel-ingot-price"
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
-        response = requests.get(url, headers=headers, timeout=10)
-        if response.status_code == 200:
-            soup = BeautifulSoup(response.text, 'html.parser')
-            rows = soup.find_all('tr')
-            for row in rows:
-                cells = row.find_all('td')
-                if len(cells) >= 6:
-                    factory = cells[0].get_text(strip=True)
-                    price_text = cells[5].get_text(strip=True).replace(',', '').replace('تومان', '').strip()
-                    if factory and price_text and re.match(r'^\d+$', price_text):
-                        prices["billet"]["factory"][factory[:20]] = price_text
-    except Exception as e:
-        print(f"Scraping error: {e}")
     
     return prices
 
@@ -144,8 +131,7 @@ async def main_menu_handler(update: Update, context):
     
     if query.data == "show_global":
         text = "🌍 *قیمت‌های جهانی* 🌍\n"
-        text += f"🔄 {datetime.now().strftime('%Y/%m/%d - %H:%M')}\n"
-        text += f"💱 نرخ دلار: {get_usd_rial_rate():,} ریال\n\n"
+        text += f"🔄 {datetime.now().strftime('%Y/%m/%d - %H:%M')}\n\n"
         for key, d in get_global_prices().items():
             text += f"• *{d['name']}*\n"
             text += f"   🇮🇷 FOB خلیج فارس: ${d['fob_pg']}\n"
@@ -155,48 +141,36 @@ async def main_menu_handler(update: Update, context):
     
     elif query.data == "show_iran":
         iran_prices = get_iran_prices()
-        rate = get_usd_rial_rate()
+        nego_rate = get_usd_nego_rate()
+        free_rate = get_usd_free_rate()
         
         text = "🇮🇷 *قیمت‌های داخلی ایران* 🇮🇷\n"
-        text += f"🔄 {datetime.now().strftime('%Y/%m/%d - %H:%M')}\n"
-        text += f"💱 نرخ دلار مبادله‌ای: {rate//10:,} تومان ({rate:,} ریال)\n\n"
+        text += f"🔄 {datetime.now().strftime('%Y/%m/%d - %H:%M')}\n\n"
+        
+        text += "💱 *نرخ ارز:*\n"
+        text += f"   • دلار مبادله‌ای (نیمایی): {nego_rate//10:,} تومان ({nego_rate:,} ریال)\n"
+        text += f"   • دلار بازار آزاد: {free_rate//10:,} تومان ({free_rate:,} ریال)\n\n"
         
         text += "═══════════════════════════\n"
-        text += "🏭 *بورس کالا (ICE):*\n\n"
+        text += "🏭 *بورس کالا (ICE) - تومان:*\n\n"
         
         for key, d in iran_prices.items():
             unit = d.get("unit", "تن")
             text += f"• *{d['name']}*: {d['ice']} تومان/{unit}\n"
         
-        text += "\n🔄 *بازار آزاد:*\n\n"
+        text += "\n🔄 *بازار آزاد - تومان:*\n\n"
         for key, d in iran_prices.items():
             unit = d.get("unit", "تن")
             text += f"• *{d['name']}*: {d['free_market']} تومان/{unit}\n"
         
-        if any(d.get("factory") for d in iran_prices.values()):
-            text += "\n═══════════════════════════\n"
-            text += "🏭 *قیمت درب کارخانه‌ها:*\n\n"
-            
-            # شمش
-            if iran_prices["billet"]["factory"]:
-                text += "🔩 *شمش فولادی (تومان/تن):*\n"
-                for factory, price in list(iran_prices["billet"]["factory"].items())[:6]:
-                    text += f"   • {factory}: {price:,} تومان\n"
-            
-            # گندله
-            if iran_prices["pellet"]["factory"]:
-                text += "\n🟤 *گندله (تومان/تن):*\n"
-                for factory, price in iran_prices["pellet"]["factory"].items():
-                    text += f"   • {factory}: {price:,} تومان\n"
-            
-            # کنسانتره
-            if iran_prices["concentrate"]["factory"]:
-                text += "\n🪨 *کنسانتره (تومان/تن):*\n"
-                for factory, price in iran_prices["concentrate"]["factory"].items():
-                    text += f"   • {factory}: {price:,} تومان\n"
+        text += "\n═══════════════════════════\n"
+        text += "🏭 *قیمت درب کارخانه (تومان/تن):*\n\n"
+        text += f"🔩 *شمش فولادی:*\n   {iran_prices['billet']['factory']}\n"
+        text += f"\n🟤 *گندله:*\n   {iran_prices['pellet']['factory']}\n"
+        text += f"\n🪨 *کنسانتره:*\n   {iran_prices['concentrate']['factory']}\n"
         
         text += "\n═══════════════════════════\n"
-        text += "📌 منابع: بورس کالا، آهن ملل، شبکه طلا و ارز\n"
+        text += "📌 منابع: بورس کالا، آهن ملل، نوبیتکس، TGJU\n"
         text += "📆 قیمت‌ها به‌طور خودکار از منابع معتبر دریافت می‌شوند."
         
         await query.edit_message_text(text, parse_mode="Markdown")
@@ -249,10 +223,16 @@ async def get_price(update: Update, context):
         text = update.message.text.replace(',', '').replace('،', '').strip()
         price = float(text)
         user_data[uid]["purchase"] = price
-        rate = get_usd_rial_rate()
+        
+        nego_rate = get_usd_nego_rate()
+        free_rate = get_usd_free_rate()
+        
         await update.message.reply_text(
-            f"💱 *نرخ دلار مبادله‌ای:* {rate//10:,} تومان ({rate:,} ریال)\n\n"
-            f"0 = استفاده از نرخ فعلی\n"
+            f"💱 *نرخ دلار:*\n"
+            f"   • مبادله‌ای (نیمایی): {nego_rate//10:,} تومان\n"
+            f"   • بازار آزاد: {free_rate//10:,} تومان\n\n"
+            f"0 = استفاده از نرخ مبادله‌ای\n"
+            f"1 = استفاده از نرخ بازار آزاد\n"
             f"یا عدد دلخواه را وارد کنید:",
             parse_mode="Markdown"
         )
@@ -266,11 +246,28 @@ async def get_rate(update: Update, context):
     try:
         text = update.message.text.replace(',', '').replace('،', '').strip()
         val = float(text)
-        user_data[uid]["rate"] = val if val != 0 else get_usd_rial_rate()
-        await update.message.reply_text("⚖️ *تناژ* (تن) را وارد کنید:\n(مثال: 5000)", parse_mode="Markdown")
+        
+        nego_rate = get_usd_nego_rate()
+        free_rate = get_usd_free_rate()
+        
+        if val == 0:
+            user_data[uid]["rate"] = nego_rate
+            rate_type = "مبادله‌ای (نیمایی)"
+        elif val == 1:
+            user_data[uid]["rate"] = free_rate
+            rate_type = "بازار آزاد"
+        else:
+            user_data[uid]["rate"] = val
+            rate_type = "دلخواه"
+        
+        await update.message.reply_text(
+            f"✅ نرخ ارز {rate_type}: {user_data[uid]['rate']//10:,} تومان\n\n"
+            f"⚖️ *تناژ* (تن) را وارد کنید:\n(مثال: 5000)",
+            parse_mode="Markdown"
+        )
         return GET_TONNAGE
     except:
-        await update.message.reply_text("❌ عدد معتبر وارد کنید (مثال: 5000):")
+        await update.message.reply_text("❌ عدد معتبر وارد کنید (0, 1 یا عدد دلخواه):")
         return GET_RATE
 
 async def get_tonnage(update: Update, context):
@@ -281,7 +278,7 @@ async def get_tonnage(update: Update, context):
         await update.message.reply_text("🚢 *هزینه حمل* هر تن به دلار را وارد کنید:\n(مثال: 18)", parse_mode="Markdown")
         return GET_FREIGHT
     except:
-        await update.message.reply_text("❌ عدد معتبر وارد کنید (مثال: 18):")
+        await update.message.reply_text("❌ عدد معتبر وارد کنید (مثال: 5000):")
         return GET_TONNAGE
 
 async def get_freight(update: Update, context):
@@ -292,7 +289,7 @@ async def get_freight(update: Update, context):
         await update.message.reply_text("⚓ *هزینه بارگیری در پورت* هر تن به دلار را وارد کنید:\n(مثال: 4)", parse_mode="Markdown")
         return GET_PORT
     except:
-        await update.message.reply_text("❌ عدد معتبر وارد کنید (مثال: 4):")
+        await update.message.reply_text("❌ عدد معتبر وارد کنید (مثال: 18):")
         return GET_FREIGHT
 
 async def get_port(update: Update, context):
@@ -312,6 +309,7 @@ async def get_port(update: Update, context):
         total_cost = (purchase + freight + port) * t
         profit_usd = revenue - total_cost
         profit_rial = profit_usd * rate
+        profit_toman = profit_rial // 10
         
         result = f"""
 📊 *نتیجه محاسبه سود*
@@ -327,9 +325,10 @@ async def get_port(update: Update, context):
 {'─' * 30}
 ✅ *سود خالص:*
 🇺🇸 دلار: ${profit_usd:,.0f}
+🇮🇷 تومان: {profit_toman:,.0f} تومان
 🇮🇷 ریال: {profit_rial:,.0f} ریال
 {'─' * 30}
-💱 نرخ ارز: {rate:,} ریال
+💱 نرخ ارز: {rate:,.0f} ریال
 """
         await update.message.reply_text(result, parse_mode="Markdown")
         del user_data[uid]
