@@ -4,8 +4,6 @@ import os
 import requests
 from datetime import datetime
 import asyncio
-
-# ✅ import درست از database
 import database
 from database import init_db, add_alert, get_active_alerts, deactivate_alert, save_price
 
@@ -16,9 +14,6 @@ user_data = {}
 
 # ========== دریافت نرخ دقیق دلار بازار آزاد ==========
 def get_usd_rial_rate():
-    """دریافت نرخ دقیق دلار از منابع معتبر"""
-    
-    # منبع اول: Nobitex
     try:
         r = requests.get("https://api.nobitex.ir/v2/trades", timeout=5)
         if r.status_code == 200:
@@ -28,8 +23,6 @@ def get_usd_rial_rate():
                 return price
     except:
         pass
-    
-    # منبع دوم: TGJU
     try:
         r = requests.get("https://api.tgju.org/v1/price/price_dollar_rl", timeout=5)
         if r.status_code == 200:
@@ -40,22 +33,19 @@ def get_usd_rial_rate():
                 return price
     except:
         pass
-    
-    # نرخ پیش‌فرض
     return 65000
 
 # ========== قیمت‌های جهانی محصولات ==========
 def get_global_prices():
-    """قیمت‌های جهانی محصولات (فقط دلار)"""
     return {
         "iron_ore_62": {
-            "name": "سنگ آهن 62%",
+            "name": "سنگ آهن ۶۲٪",
             "global": 112.8,
             "north": 111.5,
             "south": 112.0
         },
         "fe_65": {
-            "name": "Fe 65%",
+            "name": "کنسانتره آهن ۶۵٪",
             "global": 136.0,
             "north": 135.0,
             "south": 135.5
@@ -81,7 +71,6 @@ def get_global_prices():
     }
 
 def get_global_product_price(product_name):
-    """دریافت قیمت یک محصول خاص"""
     prices = get_global_prices()
     for key, data in prices.items():
         if data["name"] == product_name:
@@ -105,7 +94,6 @@ async def check_alerts(app):
                             triggered = True
                         elif condition == "above" and current_price > target:
                             triggered = True
-                        
                         if triggered:
                             try:
                                 await app.bot.send_message(
@@ -129,6 +117,7 @@ async def check_alerts(app):
 async def start(update: Update, context):
     keyboard = [
         [InlineKeyboardButton("📊 محاسبه سود", callback_data="new_profit")],
+        [InlineKeyboardButton("📊 مقایسه قیمت", callback_data="compare_price")],
         [InlineKeyboardButton("🔔 تنظیم هشدار", callback_data="set_alert")],
         [InlineKeyboardButton("💰 قیمت جهانی", callback_data="global_price")]
     ]
@@ -150,13 +139,17 @@ async def global_price(update: Update, context):
     text = f"🌍 *قیمت‌های جهانی و بنادر چین* 🌍\n"
     text += f"🔄 آخرین به‌روزرسانی: {datetime.now().strftime('%Y/%m/%d - %H:%M')}\n"
     text += f"💱 نرخ دلار آزاد: **{rate:,.0f} ریال**\n\n"
+    text += f"📌 *مبانی قیمت‌ها:*\n"
+    text += f"   • قیمت‌ها بر اساس شاخص CFR (Cost and Freight) بنادر اصلی چین\n"
+    text += f"   • بندر شمالی: *چینگدائو (Qingdao)* - شاخص اصلی\n"
+    text += f"   • بندر جنوبی: *فانگ‌چنگ (Fangcheng)* - بازار جنوب شرق آسیا\n\n"
     
-    text += f"{'═' * 35}\n\n"
+    text += f"{'═' * 40}\n\n"
     
     for key, data in prices.items():
-        if data["name"] == "سنگ آهن 62%":
+        if data["name"] == "سنگ آهن ۶۲٪":
             icon = "🪨"
-        elif data["name"] == "Fe 65%":
+        elif data["name"] == "کنسانتره آهن ۶۵٪":
             icon = "⚙️"
         elif data["name"] == "کنسانتره آهن":
             icon = "🏗️"
@@ -166,23 +159,99 @@ async def global_price(update: Update, context):
             icon = "🔩"
         
         text += f"{icon} *{data['name']}*\n"
-        text += f"   جهانی: **${data['global']:,.1f}**\n"
-        text += f"   📍 شمال: ${data['north']:,.1f}\n"
-        text += f"   📍 جنوب: ${data['south']:,.1f}\n\n"
-    
-    # تحلیل سریع
-    iron62 = prices["iron_ore_62"]["global"]
-    pellet = prices["pellet"]["global"]
-    billet = prices["billet"]["global"]
-    
-    text += f"{'═' * 35}\n"
-    text += f"📊 *تحلیل سریع*\n"
-    text += f"• گندله نسبت به سنگ آهن: +{pellet - iron62:.1f}$ گران‌تر\n"
-    text += f"• بیلت نسبت به سنگ آهن: +{billet - iron62:.1f}$ گران‌تر\n"
-    text += f"• ارزان‌ترین بندر: شمال (چینگدائو)\n\n"
-    text += f"📆 منابع: IODEX, SMM, Fastmarkets, Platts, Nobitex"
+        text += f"   📍 بنادر شمالی: *${data['north']:,.1f}*\n"
+        text += f"   📍 بنادر جنوبی: *${data['south']:,.1f}*\n\n"
     
     await query.edit_message_text(text, parse_mode="Markdown")
+
+# ========== مقایسه قیمت (جدید) ==========
+async def compare_price_start(update: Update, context):
+    query = update.callback_query
+    await query.answer()
+    
+    keyboard = [
+        [InlineKeyboardButton("🪨 سنگ آهن ۶۲٪", callback_data="compare_iron_ore_62")],
+        [InlineKeyboardButton("⚙️ کنسانتره آهن ۶۵٪", callback_data="compare_fe_65")],
+        [InlineKeyboardButton("🏗️ کنسانتره آهن", callback_data="compare_concentrate")],
+        [InlineKeyboardButton("🟤 گندله", callback_data="compare_pellet")],
+        [InlineKeyboardButton("🔩 بیلت", callback_data="compare_billet")],
+        [InlineKeyboardButton("🔙 بازگشت", callback_data="back_to_menu")]
+    ]
+    await query.edit_message_text(
+        "📊 *مقایسه قیمت*\n\nلطفاً محصول مورد نظر را انتخاب کنید:",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="Markdown"
+    )
+
+async def compare_price_product(update: Update, context):
+    query = update.callback_query
+    await query.answer()
+    
+    product_map = {
+        "compare_iron_ore_62": "سنگ آهن ۶۲٪",
+        "compare_fe_65": "کنسانتره آهن ۶۵٪",
+        "compare_concentrate": "کنسانتره آهن",
+        "compare_pellet": "گندله",
+        "compare_billet": "بیلت"
+    }
+    
+    product_name = product_map.get(query.data)
+    if not product_name:
+        return
+    
+    product_data = get_global_product_price(product_name)
+    rate = get_usd_rial_rate()
+    
+    if product_data:
+        diff = abs(product_data['north'] - product_data['south'])
+        cheaper = "شمال" if product_data['north'] < product_data['south'] else "جنوب"
+        
+        diff_rial = diff * rate
+        north_rial = product_data['north'] * rate
+        south_rial = product_data['south'] * rate
+        
+        text = f"📊 *مقایسه قیمت {product_name}*\n\n"
+        text += f"{'═' * 35}\n\n"
+        text += f"📍 *بنادر شمالی چین (چینگدائو)*\n"
+        text += f"   💰 قیمت: *${product_data['north']:,.1f}*\n"
+        text += f"   ≈ {north_rial:,.0f} ریال\n\n"
+        text += f"📍 *بنادر جنوبی چین (فانگ‌چنگ)*\n"
+        text += f"   💰 قیمت: *${product_data['south']:,.1f}*\n"
+        text += f"   ≈ {south_rial:,.0f} ریال\n\n"
+        text += f"{'═' * 35}\n"
+        text += f"📊 *تحلیل مقایسه:*\n"
+        text += f"   • اختلاف قیمت: *{diff:.1f}* دلار ({diff_rial:,.0f} ریال)\n"
+        text += f"   • بندر *{cheaper}* ارزان‌تر است\n"
+        
+        # توصیه خرید
+        if cheaper == "شمال":
+            text += f"   • 💡 *توصیه:* خرید از بنادر شمالی به صرفه‌تر است\n"
+        else:
+            text += f"   • 💡 *توصیه:* خرید از بنادر جنوبی به صرفه‌تر است\n"
+        
+        text += f"\n💱 نرخ دلار: {rate:,.0f} ریال\n"
+        text += f"📅 {datetime.now().strftime('%Y/%m/%d - %H:%M')}"
+        
+        await query.edit_message_text(text, parse_mode="Markdown")
+    else:
+        await query.edit_message_text("❌ اطلاعات محصول یافت نشد.")
+
+# ========== بازگشت به منو ==========
+async def back_to_menu(update: Update, context):
+    query = update.callback_query
+    await query.answer()
+    
+    keyboard = [
+        [InlineKeyboardButton("📊 محاسبه سود", callback_data="new_profit")],
+        [InlineKeyboardButton("📊 مقایسه قیمت", callback_data="compare_price")],
+        [InlineKeyboardButton("🔔 تنظیم هشدار", callback_data="set_alert")],
+        [InlineKeyboardButton("💰 قیمت جهانی", callback_data="global_price")]
+    ]
+    await query.edit_message_text(
+        "🏭 *ربات تخصصی سنگ آهن و فلزات* 🏭\n\nلطفاً یکی از گزینه‌ها را انتخاب کنید:",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="Markdown"
+    )
 
 # ========== تنظیم هشدار ==========
 async def set_alert_start(update: Update, context):
@@ -193,8 +262,8 @@ async def set_alert_start(update: Update, context):
     await query.edit_message_text(
         "🔔 *تنظیم هشدار قیمتی*\n\n"
         "لطفاً نام محصول را وارد کنید:\n"
-        "• سنگ آهن 62%\n"
-        "• Fe 65%\n"
+        "• سنگ آهن ۶۲٪\n"
+        "• کنسانتره آهن ۶۵٪\n"
         "• کنسانتره آهن\n"
         "• گندله\n"
         "• بیلت",
@@ -203,13 +272,13 @@ async def set_alert_start(update: Update, context):
 
 async def alert_product(update: Update, context):
     product = update.message.text
-    valid_products = ["سنگ آهن 62%", "Fe 65%", "کنسانتره آهن", "گندله", "بیلت"]
+    valid_products = ["سنگ آهن ۶۲٪", "کنسانتره آهن ۶۵٪", "کنسانتره آهن", "گندله", "بیلت"]
     if product not in valid_products:
         await update.message.reply_text("❌ محصول نامعتبر. لطفاً یکی از محصولات لیست را وارد کنید:")
         return
     context.user_data["alert_product"] = product
     context.user_data["alert_step"] = "port"
-    await update.message.reply_text("📍 بندر را انتخاب کنید:\n• north (شمال)\n• south (جنوب)")
+    await update.message.reply_text("📍 بندر را انتخاب کنید:\n• north (بنادر شمالی)\n• south (بنادر جنوبی)")
 
 async def alert_port(update: Update, context):
     port = update.message.text.lower()
@@ -259,8 +328,8 @@ async def profit_start(update: Update, context):
     user_data[user_id] = {}
     
     keyboard = [
-        [InlineKeyboardButton("🪨 سنگ آهن 62%", callback_data="سنگ آهن 62%")],
-        [InlineKeyboardButton("⚙️ Fe 65%", callback_data="Fe 65%")],
+        [InlineKeyboardButton("🪨 سنگ آهن ۶۲٪", callback_data="سنگ آهن ۶۲٪")],
+        [InlineKeyboardButton("⚙️ کنسانتره آهن ۶۵٪", callback_data="کنسانتره آهن ۶۵٪")],
         [InlineKeyboardButton("🏗️ کنسانتره آهن", callback_data="کنسانتره آهن")],
         [InlineKeyboardButton("🟤 گندله", callback_data="گندله")],
         [InlineKeyboardButton("🔩 بیلت", callback_data="بیلت")],
@@ -283,9 +352,9 @@ async def product_choice(update: Update, context):
     
     if product_data:
         text = f"📊 *محاسبه سود* – *{product_name}*\n\n"
-        text += f"💰 *قیمت جهانی لحظه‌ای:*\n"
-        text += f"   └ بندر شمال: *{product_data['north']:,.1f}* دلار/تن\n"
-        text += f"   └ بندر جنوب: *{product_data['south']:,.1f}* دلار/تن\n\n"
+        text += f"💰 *قیمت جهانی لحظه‌ای (شاخص CFR بنادر چین):*\n"
+        text += f"   └ بنادر شمالی چین (چینگدائو): *{product_data['north']:,.1f}* دلار/تن\n"
+        text += f"   └ بنادر جنوبی چین (فانگ‌چنگ): *{product_data['south']:,.1f}* دلار/تن\n\n"
         text += f"✏️ *قیمت خرید خود* را به دلار وارد کنید:"
     else:
         text = f"📊 *محاسبه سود*\n\n✏️ *قیمت خرید خود* را به دلار وارد کنید:"
@@ -429,7 +498,6 @@ def main():
         print("❌ توکن یافت نشد!")
         return
     
-    # راه‌اندازی دیتابیس
     init_db()
     
     app = Application.builder().token(TOKEN).build()
@@ -450,7 +518,7 @@ def main():
     profit_conv = ConversationHandler(
         entry_points=[CallbackQueryHandler(profit_start, pattern="^new_profit$")],
         states={
-            PRODUCT: [CallbackQueryHandler(product_choice, pattern="^(سنگ آهن 62%|Fe 65%|کنسانتره آهن|گندله|بیلت)$")],
+            PRODUCT: [CallbackQueryHandler(product_choice, pattern="^(سنگ آهن ۶۲٪|کنسانتره آهن ۶۵٪|کنسانتره آهن|گندله|بیلت)$")],
             PURCHASE: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_purchase)],
             RATE_RIAL: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_rate_rial)],
             TONNAGE: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_tonnage)],
@@ -462,6 +530,9 @@ def main():
     
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(global_price, pattern="^global_price$"))
+    app.add_handler(CallbackQueryHandler(compare_price_start, pattern="^compare_price$"))
+    app.add_handler(CallbackQueryHandler(compare_price_product, pattern="^compare_"))
+    app.add_handler(CallbackQueryHandler(back_to_menu, pattern="^back_to_menu$"))
     app.add_handler(profit_conv)
     app.add_handler(alert_conv)
     app.add_handler(CommandHandler("cancel", cancel))
