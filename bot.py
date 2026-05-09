@@ -37,36 +37,42 @@ def get_usd_rial_rate():
 
 # ========== قیمت‌های جهانی محصولات ==========
 def get_global_prices():
+    """قیمت‌های جهانی محصولات با اضافه شدن FOB خلیج فارس"""
     return {
         "iron_ore_62": {
             "name": "سنگ آهن ۶۲٪",
             "global": 112.8,
             "north": 111.5,
-            "south": 112.0
+            "south": 112.0,
+            "fob_pg": 89.5  # FOB خلیج فارس
         },
         "fe_65": {
             "name": "کنسانتره آهن ۶۵٪",
             "global": 136.0,
             "north": 135.0,
-            "south": 135.5
+            "south": 135.5,
+            "fob_pg": 95.0
         },
         "concentrate": {
             "name": "کنسانتره آهن",
             "global": 134.8,
             "north": 134.0,
-            "south": 134.5
+            "south": 134.5,
+            "fob_pg": 90.0
         },
         "pellet": {
             "name": "گندله",
             "global": 157.5,
             "north": 156.5,
-            "south": 158.0
+            "south": 158.0,
+            "fob_pg": 110.0
         },
         "billet": {
             "name": "بیلت",
             "global": 525.0,
             "north": 530.0,
-            "south": 520.0
+            "south": 520.0,
+            "fob_pg": 480.0
         }
     }
 
@@ -128,7 +134,7 @@ async def start(update: Update, context):
         parse_mode="Markdown"
     )
 
-# ========== قیمت جهانی ==========
+# ========== قیمت جهانی (با FOB خلیج فارس) ==========
 async def global_price(update: Update, context):
     query = update.callback_query
     await query.answer()
@@ -140,11 +146,11 @@ async def global_price(update: Update, context):
     text += f"🔄 آخرین به‌روزرسانی: {datetime.now().strftime('%Y/%m/%d - %H:%M')}\n"
     text += f"💱 نرخ دلار آزاد: **{rate:,.0f} ریال**\n\n"
     text += f"📌 *مبانی قیمت‌ها:*\n"
-    text += f"   • قیمت‌ها بر اساس شاخص CFR (Cost and Freight) بنادر اصلی چین\n"
-    text += f"   • بندر شمالی: *چینگدائو (Qingdao)* - شاخص اصلی\n"
-    text += f"   • بندر جنوبی: *فانگ‌چنگ (Fangcheng)* - بازار جنوب شرق آسیا\n\n"
+    text += f"   • CFR چینگدائو (قیمت شامل حمل تا بندر شمالی چین)\n"
+    text += f"   • CFR فانگ‌چنگ (قیمت شامل حمل تا بندر جنوبی چین)\n"
+    text += f"   • FOB خلیج فارس (قیمت درب معدن/کارخانه ایران، بدون هزینه حمل)\n\n"
     
-    text += f"{'═' * 40}\n\n"
+    text += f"{'═' * 45}\n\n"
     
     for key, data in prices.items():
         if data["name"] == "سنگ آهن ۶۲٪":
@@ -159,12 +165,20 @@ async def global_price(update: Update, context):
             icon = "🔩"
         
         text += f"{icon} *{data['name']}*\n"
-        text += f"   📍 بنادر شمالی: *${data['north']:,.1f}*\n"
-        text += f"   📍 بنادر جنوبی: *${data['south']:,.1f}*\n\n"
+        text += f"   📍 FOB خلیج فارس: *${data['fob_pg']:,.1f}*\n"
+        text += f"   📍 CFR بنادر شمالی چین: *${data['north']:,.1f}*\n"
+        text += f"   📍 CFR بنادر جنوبی چین: *${data['south']:,.1f}*\n"
+        text += f"   └ هزینه حمل تخمینی تا چین: *${data['north'] - data['fob_pg']:.1f}*\n\n"
+    
+    text += f"{'═' * 45}\n"
+    text += f"📊 *تحلیل قیمت‌ها*\n"
+    text += f"   • صادرات از خلیج فارس به چین نیازمند {min([p['north'] - p['fob_pg'] for p in prices.values()]):.1f}-{max([p['north'] - p['fob_pg'] for p in prices.values()]):.1f} دلار هزینه حمل\n"
+    text += f"   • ارزان‌ترین بندر مقصد: بنادر شمالی چین (چینگدائو)\n\n"
+    text += f"📆 منابع: IODEX, SMM, Fastmarkets, Platts, Nobitex, تحلیل بازار خلیج فارس"
     
     await query.edit_message_text(text, parse_mode="Markdown")
 
-# ========== مقایسه قیمت (جدید) ==========
+# ========== مقایسه قیمت ==========
 async def compare_price_start(update: Update, context):
     query = update.callback_query
     await query.answer()
@@ -203,31 +217,44 @@ async def compare_price_product(update: Update, context):
     rate = get_usd_rial_rate()
     
     if product_data:
-        diff = abs(product_data['north'] - product_data['south'])
+        # اختلافات
+        diff_north_south = abs(product_data['north'] - product_data['south'])
+        diff_pg_north = product_data['north'] - product_data['fob_pg']
+        diff_pg_south = product_data['south'] - product_data['fob_pg']
+        
         cheaper = "شمال" if product_data['north'] < product_data['south'] else "جنوب"
         
-        diff_rial = diff * rate
+        fob_rial = product_data['fob_pg'] * rate
         north_rial = product_data['north'] * rate
         south_rial = product_data['south'] * rate
         
         text = f"📊 *مقایسه قیمت {product_name}*\n\n"
-        text += f"{'═' * 35}\n\n"
-        text += f"📍 *بنادر شمالی چین (چینگدائو)*\n"
+        text += f"{'═' * 40}\n\n"
+        
+        text += f"🇮🇷 *FOB خلیج فارس (صادراتی ایران)*\n"
+        text += f"   💰 قیمت: *${product_data['fob_pg']:,.1f}*\n"
+        text += f"   ≈ {fob_rial:,.0f} ریال\n\n"
+        
+        text += f"🇨🇳 *CFR بنادر شمالی چین (چینگدائو)*\n"
         text += f"   💰 قیمت: *${product_data['north']:,.1f}*\n"
         text += f"   ≈ {north_rial:,.0f} ریال\n\n"
-        text += f"📍 *بنادر جنوبی چین (فانگ‌چنگ)*\n"
+        
+        text += f"🇨🇳 *CFR بنادر جنوبی چین (فانگ‌چنگ)*\n"
         text += f"   💰 قیمت: *${product_data['south']:,.1f}*\n"
         text += f"   ≈ {south_rial:,.0f} ریال\n\n"
-        text += f"{'═' * 35}\n"
+        
+        text += f"{'═' * 40}\n"
         text += f"📊 *تحلیل مقایسه:*\n"
-        text += f"   • اختلاف قیمت: *{diff:.1f}* دلار ({diff_rial:,.0f} ریال)\n"
+        text += f"   • اختلاف قیمت شمال و جنوب: *{diff_north_south:.1f}* دلار\n"
         text += f"   • بندر *{cheaper}* ارزان‌تر است\n"
+        text += f"   • هزینه حمل خلیج فارس تا چین شمالی: *{diff_pg_north:.1f}* دلار\n"
+        text += f"   • هزینه حمل خلیج فارس تا چین جنوبی: *{diff_pg_south:.1f}* دلار\n"
         
         # توصیه خرید
-        if cheaper == "شمال":
-            text += f"   • 💡 *توصیه:* خرید از بنادر شمالی به صرفه‌تر است\n"
+        if diff_pg_north < diff_pg_south:
+            text += f"   • 💡 *توصیه:* صادرات به بنادر شمالی چین به صرفه‌تر است\n"
         else:
-            text += f"   • 💡 *توصیه:* خرید از بنادر جنوبی به صرفه‌تر است\n"
+            text += f"   • 💡 *توصیه:* صادرات به بنادر جنوبی چین به صرفه‌تر است\n"
         
         text += f"\n💱 نرخ دلار: {rate:,.0f} ریال\n"
         text += f"📅 {datetime.now().strftime('%Y/%m/%d - %H:%M')}"
@@ -278,12 +305,12 @@ async def alert_product(update: Update, context):
         return
     context.user_data["alert_product"] = product
     context.user_data["alert_step"] = "port"
-    await update.message.reply_text("📍 بندر را انتخاب کنید:\n• north (بنادر شمالی)\n• south (بنادر جنوبی)")
+    await update.message.reply_text("📍 بندر را انتخاب کنید:\n• north (بنادر شمالی)\n• south (بنادر جنوبی)\n• fob_pg (خلیج فارس)")
 
 async def alert_port(update: Update, context):
     port = update.message.text.lower()
-    if port not in ["north", "south"]:
-        await update.message.reply_text("❌ لطفاً north یا south را وارد کنید:")
+    if port not in ["north", "south", "fob_pg"]:
+        await update.message.reply_text("❌ لطفاً north, south یا fob_pg را وارد کنید:")
         return
     context.user_data["alert_port"] = port
     context.user_data["alert_step"] = "condition"
@@ -352,9 +379,10 @@ async def product_choice(update: Update, context):
     
     if product_data:
         text = f"📊 *محاسبه سود* – *{product_name}*\n\n"
-        text += f"💰 *قیمت جهانی لحظه‌ای (شاخص CFR بنادر چین):*\n"
-        text += f"   └ بنادر شمالی چین (چینگدائو): *{product_data['north']:,.1f}* دلار/تن\n"
-        text += f"   └ بنادر جنوبی چین (فانگ‌چنگ): *{product_data['south']:,.1f}* دلار/تن\n\n"
+        text += f"💰 *قیمت‌های جهانی لحظه‌ای:*\n"
+        text += f"   └ FOB خلیج فارس: *{product_data['fob_pg']:,.1f}* دلار/تن\n"
+        text += f"   └ CFR بنادر شمالی چین: *{product_data['north']:,.1f}* دلار/تن\n"
+        text += f"   └ CFR بنادر جنوبی چین: *{product_data['south']:,.1f}* دلار/تن\n\n"
         text += f"✏️ *قیمت خرید خود* را به دلار وارد کنید:"
     else:
         text = f"📊 *محاسبه سود*\n\n✏️ *قیمت خرید خود* را به دلار وارد کنید:"
