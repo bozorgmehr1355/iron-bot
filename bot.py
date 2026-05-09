@@ -3,6 +3,8 @@ from telegram.ext import Application, CommandHandler, ConversationHandler, Messa
 import os
 import requests
 from datetime import datetime
+import asyncio
+from database import init_db, add_alert, get_active_alerts, deactivate_alert, save_price
 
 # States
 PRODUCT, PURCHASE, RATE_RIAL, RATE_DIRHAM, TONNAGE, FREIGHT, PORT = range(7)
@@ -30,11 +32,160 @@ def get_usd_dirham_rate():
         pass
     return 3.67
 
+# ========== قیمت‌های جهانی (برای هشدار) ==========
+def get_global_prices():
+    """دریافت قیمت‌های لحظه‌ای برای هشدار"""
+    prices = {
+        "iron_ore_62": {"name": "سنگ آهن 62%", "north": 111.5, "south": 112.0},
+        "fe_65": {"name": "Fe 65%", "north": 135.0, "south": 135.5},
+        "pellet": {"name": "گندله", "north": 156.5, "south": 158.0},
+        "billet": {"name": "بیلت", "north": 530, "south": 520}
+    }
+    
+    # ذخیره در دیتابیس
+    for key, data in prices.items():
+        save_price(data["name"] + " شمال", "north", data["north"])
+        save_price(data["name"] + " جنوب", "south", data["south"])
+    
+    return prices
+
+# ========== بررسی خودکار هشدارها ==========
+async def check_alerts():
+    """هر 15 دقیقه یکبار هشدارها را بررسی می‌کند"""
+    while True:
+        try:
+            prices = get_global_prices()
+            alerts = get_active_alerts()
+            
+            for alert in alerts:
+                alert_id, user_id, product, port, condition, target = alert
+                
+                # پیدا کردن قیمت فعلی
+                current_price = None
+                for key, data in prices.items():
+                    if data["name"] == product:
+                        current_price = data[port]
+                        break
+                
+                if current_price:
+                    triggered = False
+                    if condition == "below" and current_price < target:
+                        triggered = True
+                    elif condition == "above" and current_price > target:
+                        triggered = True
+                    
+                    if triggered:
+                        # ارسال پیام به کاربر
+                        try:
+                            await context.bot.send_message(
+                                chat_id=user_id,
+                                text=f"🚨 *هشدار قیمتی!*\n\n"
+                                     f"محصول: {product}\n"
+                                     f"بندر: {port}\n"
+                                     f"شرط: {condition} {target}\n"
+                                     f"💰 قیمت فعلی: {current_price} دلار\n\n"
+                                     f"⏰ {datetime.now().strftime('%Y/%m/%d - %H:%M')}",
+                                parse_mode="Markdown"
+                            )
+                            deactivate_alert(alert_id)
+                        except Exception as e:
+                            print(f"خطا در ارسال هشدار به {user_id}: {e}")
+            
+            await asyncio.sleep(900)  # 15 دقیقه
+        except Exception as e:
+            print(f"خطا در بررسی هشدارها: {e}")
+            await asyncio.sleep(900)
+
 # ========== شروع ==========
 async def start(update: Update, context):
-    keyboard = [[InlineKeyboardButton("📊 محاسبه سود", callback_data="new_profit")]]
-    await update.message.reply_text("ربات محاسبه سود سنگ آهن", reply_markup=InlineKeyboardMarkup(keyboard))
+    keyboard = [
+        [InlineKeyboardButton("📊 محاسبه سود", callback_data="new_profit")],
+        [InlineKeyboardButton("🔔 تنظیم هشدار", callback_data="set_alert")],
+        [InlineKeyboardButton("💰 قیمت جهانی", callback_data="global_price")]
+    ]
+    await update.message.reply_text(
+        "ربات تخصصی سنگ آهن و فلزات\nلطفاً یکی از گزینه‌ها را انتخاب کنید:",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
 
+# ========== قیمت جهانی ==========
+async def global_price(update: Update, context):
+    query = update.callback_query
+    await query.answer()
+    
+    prices = get_global_prices()
+    text = "🌍 *قیمت‌های لحظه‌ای* 🌍\n\n"
+    
+    for key, data in prices.items():
+        text += f"📌 {data['name']}:\n"
+        text += f"   شمال: {data['north']} دلار\n"
+        text += f"   جنوب: {data['south']} دلار\n\n"
+    
+    text += f"💱 نرخ دلار: {get_usd_rial_rate():,.0f} ریال\n"
+    text += f"📆 {datetime.now().strftime('%Y/%m/%d - %H:%M')}"
+    
+    await query.edit_message_text(text, parse_mode="Markdown")
+
+# ========== تنظیم هشدار ==========
+async def set_alert_start(update: Update, context):
+    query = update.callback_query
+    await query.answer()
+    context.user_data["alert_step"] = "product"
+    await query.edit_message_text(
+        "🔔 *تنظیم هشدار قیمتی*\n\n"
+        "لطفاً محصول را وارد کنید:\n"
+        "گزینه‌ها: سنگ آهن 62% , Fe 65% , گندله , بیلت",
+        parse_mode="Markdown"
+    )
+
+async def alert_product(update: Update, context):
+    product = update.message.text
+    context.user_data["alert_product"] = product
+    context.user_data["alert_step"] = "port"
+    await update.message.reply_text("بندر را انتخاب کنید:\nگزینه‌ها: north , south")
+
+async def alert_port(update: Update, context):
+    port = update.message.text.lower()
+    if port not in ["north", "south"]:
+        await update.message.reply_text("لطفاً north یا south را وارد کنید:")
+        return
+    context.user_data["alert_port"] = port
+    context.user_data["alert_step"] = "condition"
+    await update.message.reply_text("شرط را وارد کنید:\nگزینه‌ها: below (کمتر از) , above (بیشتر از)")
+
+async def alert_condition(update: Update, context):
+    condition = update.message.text.lower()
+    if condition not in ["below", "above"]:
+        await update.message.reply_text("لطفاً below یا above را وارد کنید:")
+        return
+    context.user_data["alert_condition"] = condition
+    context.user_data["alert_step"] = "price"
+    await update.message.reply_text("قیمت هدف را به دلار وارد کنید (مثال: 110):")
+
+async def alert_price(update: Update, context):
+    try:
+        target = float(update.message.text)
+        user_id = update.effective_user.id
+        product = context.user_data["alert_product"]
+        port = context.user_data["alert_port"]
+        condition = context.user_data["alert_condition"]
+        
+        alert_id = add_alert(user_id, product, port, condition, target)
+        
+        await update.message.reply_text(
+            f"✅ *هشدار با موفقیت ثبت شد!*\n\n"
+            f"شناسه: {alert_id}\n"
+            f"محصول: {product}\n"
+            f"بندر: {port}\n"
+            f"شرط: {condition} {target} دلار\n\n"
+            f"🔔 هر 15 دقیقه قیمت‌ها بررسی می‌شوند.",
+            parse_mode="Markdown"
+        )
+        del context.user_data["alert_step"]
+    except:
+        await update.message.reply_text("عدد معتبر وارد کنید:")
+
+# ========== محاسبه سود (همان کد قبلی) ==========
 async def profit_start(update: Update, context):
     query = update.callback_query
     await query.answer()
@@ -61,7 +212,7 @@ async def get_purchase(update: Update, context):
     uid = update.effective_user.id
     try:
         user_data[uid]["purchase"] = float(update.message.text)
-        await update.message.reply_text(f"نرخ دلار آزاد: {get_usd_rial_rate():,.0f} تومان\n0=همین نرخ، یا عدد دلخواه:")
+        await update.message.reply_text(f"نرخ دلار آزاد: {get_usd_rial_rate():,.0f} ریال\n0=همین نرخ، یا عدد دلخواه:")
         return RATE_RIAL
     except:
         await update.message.reply_text("عدد وارد کن")
@@ -122,9 +273,7 @@ async def get_port(update: Update, context):
         rate_rial = d["rate_rial"]
         rate_dirham = d["rate_dirham"]
         
-        # سود 20 درصدی
         fob = purchase * 1.2
-        
         revenue_usd = fob * t
         total_cost_usd = (purchase + freight + port) * t
         profit_usd = revenue_usd - total_cost_usd
@@ -175,9 +324,29 @@ def main():
         print("توکن نداریم")
         return
     
+    # راه‌اندازی دیتابیس
+    init_db()
+    
     app = Application.builder().token(TOKEN).build()
     
-    conv = ConversationHandler(
+    # ذخیره context برای دسترسی در check_alerts
+    global context
+    context = app
+    
+    # مکالمه هشدار
+    alert_conv = ConversationHandler(
+        entry_points=[CallbackQueryHandler(set_alert_start, pattern="^set_alert$")],
+        states={
+            "product": [MessageHandler(filters.TEXT & ~filters.COMMAND, alert_product)],
+            "port": [MessageHandler(filters.TEXT & ~filters.COMMAND, alert_port)],
+            "condition": [MessageHandler(filters.TEXT & ~filters.COMMAND, alert_condition)],
+            "price": [MessageHandler(filters.TEXT & ~filters.COMMAND, alert_price)],
+        },
+        fallbacks=[CommandHandler("cancel", cancel)],
+    )
+    
+    # مکالمه محاسبه سود
+    profit_conv = ConversationHandler(
         entry_points=[CallbackQueryHandler(profit_start, pattern="^new_profit$")],
         states={
             PRODUCT: [CallbackQueryHandler(product_choice, pattern="^prod_")],
@@ -192,8 +361,13 @@ def main():
     )
     
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(conv)
+    app.add_handler(CallbackQueryHandler(global_price, pattern="^global_price$"))
+    app.add_handler(profit_conv)
+    app.add_handler(alert_conv)
     app.add_handler(CommandHandler("cancel", cancel))
+    
+    # شروع تسک بررسی هشدارها
+    asyncio.create_task(check_alerts())
     
     print("ربات روشن شد")
     app.run_polling()
