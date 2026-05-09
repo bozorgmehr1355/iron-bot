@@ -7,18 +7,24 @@ import asyncio
 from typing import Dict, Any
 from database import init_db, add_alert, get_active_alerts, deactivate_alert
 
+# States for Conversation
 PRODUCT_SELECT, PURCHASE_PRICE, RATE_SELECT, TONNAGE_INPUT, FREIGHT_INPUT, PORT_INPUT = range(6)
+
 user_data = {}
 
+# ========== Cache ==========
 cache: Dict[str, Any] = {'data': None, 'timestamp': None}
+
 def is_cache_valid():
     if cache['timestamp'] is None:
         return False
     return datetime.now() - cache['timestamp'] < timedelta(minutes=5)
+
 def update_cache(data):
     cache['data'] = data
     cache['timestamp'] = datetime.now()
 
+# ========== نرخ دلار بازار آزاد ==========
 def get_usd_rial_rate():
     try:
         r = requests.get("https://api.nobitex.ir/v2/trades", timeout=5)
@@ -41,9 +47,11 @@ def get_usd_rial_rate():
         pass
     return 1780000
 
+# ========== قیمت‌های جهانی ==========
 def get_global_prices():
     if is_cache_valid():
         return cache['data']
+    
     api_key = os.environ.get("METALS_API_KEY")
     if api_key:
         try:
@@ -65,6 +73,7 @@ def get_global_prices():
                     return prices
         except:
             pass
+    
     prices = {
         "concentrate": {"name": "کنسانتره سنگ آهن", "fob_pg": 85, "north": 130, "south": 131, "icon": "⚙️"},
         "pellet": {"name": "گندله", "fob_pg": 105, "north": 155, "south": 156, "icon": "🟤"},
@@ -81,6 +90,7 @@ def get_global_product_price(product_name):
             return data
     return None
 
+# ========== منوی اصلی ==========
 def get_main_menu():
     keyboard = [
         [InlineKeyboardButton("📊 محاسبه سود", callback_data="menu_profit")],
@@ -93,7 +103,14 @@ def get_main_menu():
 
 async def start(update: Update, context):
     await update.message.reply_text(
-        "🏭 *ربات تخصصی زنجیره آهن و فولاد* 🏭\n\nلطفاً یکی از گزینه‌ها را انتخاب کنید:",
+        "🏭 *ربات تخصصی زنجیره آهن و فولاد* 🏭\n\n"
+        "📌 محصولات تحت پوشش:\n"
+        "1. کنسانتره سنگ آهن\n"
+        "2. گندله\n"
+        "3. آهن اسفنجی\n"
+        "4. شمش فولادی\n"
+        "5. میلگرد\n\n"
+        "لطفاً یکی از گزینه‌ها را انتخاب کنید:",
         reply_markup=get_main_menu(),
         parse_mode="Markdown"
     )
@@ -102,31 +119,56 @@ async def back_to_menu(update: Update, context):
     query = update.callback_query
     await query.answer()
     await query.edit_message_text(
-        "🏭 *ربات تخصصی زنجیره آهن و فولاد* 🏭\n\nلطفاً یکی از گزینه‌ها را انتخاب کنید:",
+        "🏭 *ربات تخصصی زنجیره آهن و فولاد* 🏭\n\n"
+        "📌 محصولات تحت پوشش:\n"
+        "1. کنسانتره سنگ آهن\n"
+        "2. گندله\n"
+        "3. آهن اسفنجی\n"
+        "4. شمش فولادی\n"
+        "5. میلگرد\n\n"
+        "لطفاً یکی از گزینه‌ها را انتخاب کنید:",
         reply_markup=get_main_menu(),
         parse_mode="Markdown"
     )
     return ConversationHandler.END
 
+# ========== قیمت جهانی ==========
 async def global_price_handler(update: Update, context):
     query = update.callback_query
     await query.answer()
     prices = get_global_prices()
     rate = get_usd_rial_rate()
+    
     text = f"🌍 *قیمت‌های جهانی* 🌍\n🔄 {datetime.now().strftime('%Y/%m/%d - %H:%M')}\n💱 نرخ دلار: **{rate:,} ریال**\n\n"
     for key, data in prices.items():
         text += f"{data['icon']} *{data['name']}*\n"
         text += f"   🇮🇷 FOB خلیج فارس: *${data['fob_pg']}*\n"
         text += f"   🇨🇳 CFR شمال چین: *${data['north']}*\n"
         text += f"   🇨🇳 CFR جنوب چین: *${data['south']}*\n\n"
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 بازگشت به منو", callback_data="back_to_menu")]]), parse_mode="Markdown")
+    
+    await query.edit_message_text(
+        text,
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 بازگشت به منو", callback_data="back_to_menu")]]),
+        parse_mode="Markdown"
+    )
 
+# ========== قیمت داخلی ایران ==========
 async def local_prices_handler(update: Update, context):
     query = update.callback_query
     await query.answer()
-    text = "🇮🇷 *قیمت‌های داخلی ایران* 🇮🇷\n🔄 بروزرسانی: در حال اتصال به منابع...\n\n🔧 این بخش به زودی با داده‌های لحظه‌ای بورس کالا و بازار آزاد تکمیل خواهد شد.\nلطفاً صبور باشید."
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 بازگشت به منو", callback_data="back_to_menu")]]), parse_mode="Markdown")
+    text = (
+        "🇮🇷 *قیمت‌های داخلی ایران* 🇮🇷\n"
+        "🔄 بروزرسانی: در حال اتصال به منابع...\n\n"
+        "🔧 این بخش به زودی با داده‌های لحظه‌ای بورس کالا و بازار آزاد تکمیل خواهد شد.\n"
+        "لطفاً صبور باشید."
+    )
+    await query.edit_message_text(
+        text,
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 بازگشت به منو", callback_data="back_to_menu")]]),
+        parse_mode="Markdown"
+    )
 
+# ========== مقایسه قیمت ==========
 async def compare_menu(update: Update, context):
     query = update.callback_query
     await query.answer()
@@ -138,12 +180,22 @@ async def compare_menu(update: Update, context):
         [InlineKeyboardButton("📏 میلگرد", callback_data="compare_rebar")],
         [InlineKeyboardButton("🔙 بازگشت به منوی اصلی", callback_data="back_to_menu")]
     ]
-    await query.edit_message_text("📊 *مقایسه قیمت*\nلطفاً محصول را انتخاب کنید:", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+    await query.edit_message_text(
+        "📊 *مقایسه قیمت*\nلطفاً محصول را انتخاب کنید:",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="Markdown"
+    )
 
 async def compare_handler(update: Update, context):
     query = update.callback_query
     await query.answer()
-    product_map = {"compare_concentrate": "کنسانتره سنگ آهن", "compare_pellet": "گندله", "compare_dri": "آهن اسفنجی", "compare_billet": "شمش فولادی (بیلت)", "compare_rebar": "میلگرد"}
+    product_map = {
+        "compare_concentrate": "کنسانتره سنگ آهن",
+        "compare_pellet": "گندله",
+        "compare_dri": "آهن اسفنجی",
+        "compare_billet": "شمش فولادی (بیلت)",
+        "compare_rebar": "میلگرد"
+    }
     product_name = product_map.get(query.data)
     if not product_name:
         return
@@ -155,7 +207,10 @@ async def compare_handler(update: Update, context):
     text += f"🇨🇳 *CFR شمال چین*: *${data['north']}* (هزینه حمل: {data['north'] - data['fob_pg']:.1f} دلار)\n"
     text += f"🇨🇳 *CFR جنوب چین*: *${data['south']}* (هزینه حمل: {data['south'] - data['fob_pg']:.1f} دلار)\n\n"
     text += f"💡 *توصیه*: ارزان‌ترین مقصد {'شمال' if data['north'] < data['south'] else 'جنوب'} چین است."
-    keyboard = [[InlineKeyboardButton("🔙 بازگشت به لیست محصولات", callback_data="compare_back")],[InlineKeyboardButton("🏠 بازگشت به منوی اصلی", callback_data="back_to_menu")]]
+    keyboard = [
+        [InlineKeyboardButton("🔙 بازگشت به لیست محصولات", callback_data="compare_back")],
+        [InlineKeyboardButton("🏠 بازگشت به منوی اصلی", callback_data="back_to_menu")]
+    ]
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
 
 async def compare_back(update: Update, context):
@@ -163,6 +218,7 @@ async def compare_back(update: Update, context):
     await query.answer()
     await compare_menu(update, context)
 
+# ========== تنظیم هشدار ==========
 async def alert_menu(update: Update, context):
     query = update.callback_query
     await query.answer()
@@ -174,18 +230,37 @@ async def alert_menu(update: Update, context):
         [InlineKeyboardButton("📏 میلگرد", callback_data="alert_rebar")],
         [InlineKeyboardButton("🔙 بازگشت به منوی اصلی", callback_data="back_to_menu")]
     ]
-    await query.edit_message_text("🔔 *تنظیم هشدار قیمتی*\nلطفاً محصول را انتخاب کنید:", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+    await query.edit_message_text(
+        "🔔 *تنظیم هشدار قیمتی*\nلطفاً محصول را انتخاب کنید:",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="Markdown"
+    )
 
 async def alert_product_select(update: Update, context):
     query = update.callback_query
     await query.answer()
-    product_map = {"alert_concentrate": "کنسانتره سنگ آهن", "alert_pellet": "گندله", "alert_dri": "آهن اسفنجی", "alert_billet": "شمش فولادی (بیلت)", "alert_rebar": "میلگرد"}
+    product_map = {
+        "alert_concentrate": "کنسانتره سنگ آهن",
+        "alert_pellet": "گندله",
+        "alert_dri": "آهن اسفنجی",
+        "alert_billet": "شمش فولادی (بیلت)",
+        "alert_rebar": "میلگرد"
+    }
     product_name = product_map.get(query.data)
     if not product_name:
         return
     context.user_data["alert_product"] = product_name
-    keyboard = [[InlineKeyboardButton("🇮🇷 FOB خلیج فارس", callback_data="alert_fob_pg")],[InlineKeyboardButton("🇨🇳 CFR شمال چین", callback_data="alert_north")],[InlineKeyboardButton("🇨🇳 CFR جنوب چین", callback_data="alert_south")],[InlineKeyboardButton("🔙 بازگشت", callback_data="alert_back")]]
-    await query.edit_message_text(f"🔔 *تنظیم هشدار برای {product_name}*\n\nلطفاً بندر را انتخاب کنید:", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+    keyboard = [
+        [InlineKeyboardButton("🇮🇷 FOB خلیج فارس", callback_data="alert_fob_pg")],
+        [InlineKeyboardButton("🇨🇳 CFR شمال چین", callback_data="alert_north")],
+        [InlineKeyboardButton("🇨🇳 CFR جنوب چین", callback_data="alert_south")],
+        [InlineKeyboardButton("🔙 بازگشت", callback_data="alert_back")]
+    ]
+    await query.edit_message_text(
+        f"🔔 *تنظیم هشدار برای {product_name}*\n\nلطفاً بندر را انتخاب کنید:",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="Markdown"
+    )
 
 async def alert_port_select(update: Update, context):
     query = update.callback_query
@@ -195,8 +270,16 @@ async def alert_port_select(update: Update, context):
     if not port:
         return
     context.user_data["alert_port"] = port
-    keyboard = [[InlineKeyboardButton("⬇️ کمتر از (below)", callback_data="alert_below")],[InlineKeyboardButton("⬆️ بیشتر از (above)", callback_data="alert_above")],[InlineKeyboardButton("🔙 بازگشت", callback_data="alert_back_product")]]
-    await query.edit_message_text("🔔 *شرط هشدار* را انتخاب کنید:", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+    keyboard = [
+        [InlineKeyboardButton("⬇️ کمتر از (below)", callback_data="alert_below")],
+        [InlineKeyboardButton("⬆️ بیشتر از (above)", callback_data="alert_above")],
+        [InlineKeyboardButton("🔙 بازگشت", callback_data="alert_back_product")]
+    ]
+    await query.edit_message_text(
+        "🔔 *شرط هشدار* را انتخاب کنید:",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="Markdown"
+    )
 
 async def alert_condition_select(update: Update, context):
     query = update.callback_query
@@ -207,17 +290,25 @@ async def alert_condition_select(update: Update, context):
         return
     context.user_data["alert_condition"] = condition
     context.user_data["alert_step"] = "waiting_price"
-    await query.edit_message_text(f"🔔 *تنظیم هشدار*\nمحصول: {context.user_data['alert_product']}\nشرط: {condition}\n\n💰 قیمت هدف را به *دلار* وارد کنید:", parse_mode="Markdown")
+    await query.edit_message_text(
+        f"🔔 *تنظیم هشدار*\nمحصول: {context.user_data['alert_product']}\nشرط: {condition}\n\n💰 قیمت هدف را به *دلار* وارد کنید:",
+        parse_mode="Markdown"
+    )
 
 async def alert_price_input(update: Update, context):
     try:
-        target = float(update.message.text)
+        clean_text = update.message.text.replace(',', '').replace('،', '').replace(' ', '')
+        target = float(clean_text)
         user_id = update.effective_user.id
         product = context.user_data["alert_product"]
         port = context.user_data["alert_port"]
         condition = context.user_data["alert_condition"]
         add_alert(user_id, product, port, condition, target)
-        await update.message.reply_text(f"✅ *هشدار ثبت شد!*\n\n📦 محصول: {product}\n📍 بندر: {port}\n🎯 شرط: {condition} {target} دلار", reply_markup=get_main_menu(), parse_mode="Markdown")
+        await update.message.reply_text(
+            f"✅ *هشدار ثبت شد!*\n\n📦 محصول: {product}\n📍 بندر: {port}\n🎯 شرط: {condition} {target} دلار",
+            reply_markup=get_main_menu(),
+            parse_mode="Markdown"
+        )
         del context.user_data["alert_step"]
     except:
         await update.message.reply_text("❌ عدد معتبر وارد کنید:")
@@ -232,20 +323,38 @@ async def alert_back_product(update: Update, context):
     await query.answer()
     await alert_product_select(update, context)
 
+# ========== محاسبه سود ==========
 async def profit_menu(update: Update, context):
     query = update.callback_query
     await query.answer()
     user_id = query.from_user.id
     user_data[user_id] = {}
-    keyboard = [[InlineKeyboardButton("⚙️ کنسانتره سنگ آهن", callback_data="profit_concentrate")],[InlineKeyboardButton("🟤 گندله", callback_data="profit_pellet")],[InlineKeyboardButton("🏭 آهن اسفنجی", callback_data="profit_dri")],[InlineKeyboardButton("🔩 شمش فولادی", callback_data="profit_billet")],[InlineKeyboardButton("📏 میلگرد", callback_data="profit_rebar")],[InlineKeyboardButton("🔙 بازگشت", callback_data="back_to_menu")]]
-    await query.edit_message_text("📊 *محاسبه سود*\nلطفاً محصول را انتخاب کنید:", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+    keyboard = [
+        [InlineKeyboardButton("⚙️ کنسانتره سنگ آهن", callback_data="profit_concentrate")],
+        [InlineKeyboardButton("🟤 گندله", callback_data="profit_pellet")],
+        [InlineKeyboardButton("🏭 آهن اسفنجی", callback_data="profit_dri")],
+        [InlineKeyboardButton("🔩 شمش فولادی", callback_data="profit_billet")],
+        [InlineKeyboardButton("📏 میلگرد", callback_data="profit_rebar")],
+        [InlineKeyboardButton("🔙 بازگشت", callback_data="back_to_menu")]
+    ]
+    await query.edit_message_text(
+        "📊 *محاسبه سود*\nلطفاً محصول را انتخاب کنید:",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="Markdown"
+    )
     return PRODUCT_SELECT
 
 async def profit_product_select(update: Update, context):
     query = update.callback_query
     await query.answer()
     user_id = query.from_user.id
-    product_map = {"profit_concentrate": "کنسانتره سنگ آهن", "profit_pellet": "گندله", "profit_dri": "آهن اسفنجی", "profit_billet": "شمش فولادی (بیلت)", "profit_rebar": "میلگرد"}
+    product_map = {
+        "profit_concentrate": "کنسانتره سنگ آهن",
+        "profit_pellet": "گندله",
+        "profit_dri": "آهن اسفنجی",
+        "profit_billet": "شمش فولادی (بیلت)",
+        "profit_rebar": "میلگرد"
+    }
     product_name = product_map.get(query.data)
     if not product_name:
         await query.edit_message_text("❌ خطا در انتخاب محصول. دوباره تلاش کنید.")
@@ -254,17 +363,30 @@ async def profit_product_select(update: Update, context):
     product_data = get_global_product_price(product_name)
     text = f"📊 *محاسبه سود - {product_name}*\n\n"
     if product_data:
-        text += f"💰 *قیمت جهانی:*\n   └ FOB خلیج فارس: {product_data['fob_pg']} دلار\n   └ CFR شمال چین: {product_data['north']} دلار\n   └ CFR جنوب چین: {product_data['south']} دلار\n\n"
+        text += f"💰 *قیمت جهانی:*\n"
+        text += f"   └ FOB خلیج فارس: {product_data['fob_pg']} دلار\n"
+        text += f"   └ CFR شمال چین: {product_data['north']} دلار\n"
+        text += f"   └ CFR جنوب چین: {product_data['south']} دلار\n\n"
     text += f"✏️ *قیمت خرید خود* را به دلار وارد کنید:"
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 انصراف", callback_data="back_to_menu")]]), parse_mode="Markdown")
+    await query.edit_message_text(
+        text,
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 انصراف", callback_data="back_to_menu")]]),
+        parse_mode="Markdown"
+    )
     return PURCHASE_PRICE
 
+# ========== توابع ورودی با مدیریت صحیح اعداد ==========
 async def purchase_input(update: Update, context):
     uid = update.effective_user.id
     try:
-        user_data[uid]["purchase"] = float(update.message.text)
+        clean_text = update.message.text.replace(',', '').replace('،', '').replace(' ', '')
+        purchase_price = float(clean_text)
+        user_data[uid]["purchase"] = purchase_price
         rate = get_usd_rial_rate()
-        await update.message.reply_text(f"💱 *نرخ دلار آزاد:* {rate:,} ریال\n\n0 = استفاده از نرخ فعلی\nیا عدد دلخواه را وارد کنید:", parse_mode="Markdown")
+        await update.message.reply_text(
+            f"💱 *نرخ دلار آزاد:* {rate:,} ریال\n\n0 = استفاده از نرخ فعلی\nیا عدد دلخواه را وارد کنید:",
+            parse_mode="Markdown"
+        )
         return RATE_SELECT
     except:
         await update.message.reply_text("❌ لطفاً یک عدد معتبر وارد کنید (مثال: 95):")
@@ -273,7 +395,8 @@ async def purchase_input(update: Update, context):
 async def rate_input(update: Update, context):
     uid = update.effective_user.id
     try:
-        val = float(update.message.text)
+        clean_text = update.message.text.replace(',', '').replace('،', '').replace(' ', '')
+        val = float(clean_text)
         user_data[uid]["rate"] = val if val != 0 else get_usd_rial_rate()
         await update.message.reply_text("⚖️ *تناژ* (تن) را وارد کنید:\n(مثال: 5000)", parse_mode="Markdown")
         return TONNAGE_INPUT
@@ -284,7 +407,8 @@ async def rate_input(update: Update, context):
 async def tonnage_input(update: Update, context):
     uid = update.effective_user.id
     try:
-        user_data[uid]["tonnage"] = float(update.message.text)
+        clean_text = update.message.text.replace(',', '').replace('،', '').replace(' ', '')
+        user_data[uid]["tonnage"] = float(clean_text)
         await update.message.reply_text("🚢 *هزینه حمل* هر تن به دلار را وارد کنید:\n(مثال: 18)", parse_mode="Markdown")
         return FREIGHT_INPUT
     except:
@@ -294,7 +418,8 @@ async def tonnage_input(update: Update, context):
 async def freight_input(update: Update, context):
     uid = update.effective_user.id
     try:
-        user_data[uid]["freight"] = float(update.message.text)
+        clean_text = update.message.text.replace(',', '').replace('،', '').replace(' ', '')
+        user_data[uid]["freight"] = float(clean_text)
         await update.message.reply_text("⚓ *هزینه بارگیری در پورت* هر تن به دلار را وارد کنید:\n(مثال: 4)", parse_mode="Markdown")
         return PORT_INPUT
     except:
@@ -304,7 +429,9 @@ async def freight_input(update: Update, context):
 async def port_input(update: Update, context):
     uid = update.effective_user.id
     try:
-        user_data[uid]["port"] = float(update.message.text)
+        clean_text = update.message.text.replace(',', '').replace('،', '').replace(' ', '')
+        user_data[uid]["port"] = float(clean_text)
+        
         d = user_data[uid]
         t = d["tonnage"]
         purchase = d["purchase"]
@@ -337,7 +464,8 @@ async def port_input(update: Update, context):
         await update.message.reply_text(result, reply_markup=get_main_menu(), parse_mode="Markdown")
         del user_data[uid]
         return ConversationHandler.END
-    except:
+    except Exception as e:
+        print(e)
         await update.message.reply_text("❌ خطا: لطفاً یک عدد معتبر وارد کنید.")
         return PORT_INPUT
 
@@ -348,6 +476,7 @@ async def cancel(update: Update, context):
     await update.message.reply_text("❌ عملیات لغو شد.", reply_markup=get_main_menu())
     return ConversationHandler.END
 
+# ========== بررسی هشدارها ==========
 async def check_alerts(app):
     while True:
         try:
@@ -358,18 +487,26 @@ async def check_alerts(app):
                 if pdata:
                     current = pdata.get(port, 0)
                     if (cond == "below" and current < target) or (cond == "above" and current > target):
-                        await app.bot.send_message(uid, f"🚨 *هشدار قیمتی!*\n\n📦 محصول: {product}\n📍 بندر: {port}\n💰 قیمت فعلی: {current} دلار\n🎯 هدف: {cond} {target} دلار", parse_mode="Markdown")
+                        await app.bot.send_message(
+                            uid,
+                            f"🚨 *هشدار قیمتی!*\n\n📦 محصول: {product}\n📍 بندر: {port}\n💰 قیمت فعلی: {current} دلار\n🎯 هدف: {cond} {target} دلار",
+                            parse_mode="Markdown"
+                        )
                         deactivate_alert(pid)
         except:
             await asyncio.sleep(60)
 
+# ========== اجرای اصلی ==========
 def main():
     TOKEN = os.environ.get("BOT_TOKEN")
     if not TOKEN:
         print("❌ توکن یافت نشد!")
         return
+    
     init_db()
     app = Application.builder().token(TOKEN).build()
+    
+    # هندلرهای عمومی
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(back_to_menu, pattern="^back_to_menu$"))
     app.add_handler(CallbackQueryHandler(global_price_handler, pattern="^menu_global$"))
@@ -384,6 +521,8 @@ def main():
     app.add_handler(CallbackQueryHandler(alert_back, pattern="^alert_back$"))
     app.add_handler(CallbackQueryHandler(alert_back_product, pattern="^alert_back_product$"))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, alert_price_input))
+    
+    # مکالمه محاسبه سود
     profit_conv = ConversationHandler(
         entry_points=[CallbackQueryHandler(profit_menu, pattern="^menu_profit$")],
         states={
@@ -396,10 +535,14 @@ def main():
         },
         fallbacks=[CommandHandler("cancel", cancel), CallbackQueryHandler(back_to_menu, pattern="^back_to_menu$")],
     )
+    
     app.add_handler(profit_conv)
+    
     async def post_init(application):
         asyncio.create_task(check_alerts(application))
+    
     app.post_init = post_init
+    
     print("🤖 ربات روشن شد!")
     app.run_polling()
 
