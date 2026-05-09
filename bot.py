@@ -270,7 +270,7 @@ async def alert_back_product(update: Update, context):
     await query.answer()
     await alert_product_select(update, context)
 
-# ========== محاسبه سود (اصلاح شده) ==========
+# ========== محاسبه سود ==========
 async def profit_menu(update: Update, context):
     query = update.callback_query
     await query.answer()
@@ -304,7 +304,8 @@ async def profit_product_select(update: Update, context):
     }
     product_name = product_map.get(query.data)
     if not product_name:
-        return None
+        await query.edit_message_text("❌ خطا در انتخاب محصول. دوباره تلاش کنید.")
+        return PRODUCT_SELECT
     
     user_data[user_id]["product"] = product_name
     product_data = get_global_product_price(product_name)
@@ -327,15 +328,19 @@ async def profit_product_select(update: Update, context):
 async def purchase_input(update: Update, context):
     uid = update.effective_user.id
     try:
-        user_data[uid]["purchase"] = float(update.message.text)
+        purchase_price = float(update.message.text)
+        user_data[uid]["purchase"] = purchase_price
         rate = get_usd_rial_rate()
         await update.message.reply_text(
             f"💱 *نرخ دلار آزاد:* {rate:,} ریال\n\n0 = استفاده از نرخ فعلی\nیا عدد دلخواه را وارد کنید:",
             parse_mode="Markdown"
         )
         return RATE_SELECT
-    except:
-        await update.message.reply_text("❌ عدد معتبر وارد کنید:")
+    except ValueError:
+        await update.message.reply_text("❌ لطفاً یک عدد معتبر وارد کنید (مثال: 95):")
+        return PURCHASE_PRICE
+    except Exception as e:
+        await update.message.reply_text(f"❌ خطا: لطفاً یک عدد معتبر وارد کنید.")
         return PURCHASE_PRICE
 
 async def rate_input(update: Update, context):
@@ -343,30 +348,30 @@ async def rate_input(update: Update, context):
     try:
         val = float(update.message.text)
         user_data[uid]["rate"] = val if val != 0 else get_usd_rial_rate()
-        await update.message.reply_text("⚖️ *تناژ* (تن) را وارد کنید:", parse_mode="Markdown")
+        await update.message.reply_text("⚖️ *تناژ* (تن) را وارد کنید:\n(مثال: 5000)", parse_mode="Markdown")
         return TONNAGE_INPUT
-    except:
-        await update.message.reply_text("❌ عدد معتبر وارد کنید:")
+    except ValueError:
+        await update.message.reply_text("❌ لطفاً یک عدد معتبر وارد کنید (مثال: 5000):")
         return RATE_SELECT
 
 async def tonnage_input(update: Update, context):
     uid = update.effective_user.id
     try:
         user_data[uid]["tonnage"] = float(update.message.text)
-        await update.message.reply_text("🚢 *هزینه حمل* هر تن به دلار را وارد کنید:", parse_mode="Markdown")
+        await update.message.reply_text("🚢 *هزینه حمل* هر تن به دلار را وارد کنید:\n(مثال: 18)", parse_mode="Markdown")
         return FREIGHT_INPUT
-    except:
-        await update.message.reply_text("❌ عدد معتبر وارد کنید:")
+    except ValueError:
+        await update.message.reply_text("❌ لطفاً یک عدد معتبر وارد کنید (مثال: 18):")
         return TONNAGE_INPUT
 
 async def freight_input(update: Update, context):
     uid = update.effective_user.id
     try:
         user_data[uid]["freight"] = float(update.message.text)
-        await update.message.reply_text("⚓ *هزینه بارگیری در پورت* هر تن به دلار را وارد کنید:", parse_mode="Markdown")
+        await update.message.reply_text("⚓ *هزینه بارگیری در پورت* هر تن به دلار را وارد کنید:\n(مثال: 4)", parse_mode="Markdown")
         return PORT_INPUT
-    except:
-        await update.message.reply_text("❌ عدد معتبر وارد کنید:")
+    except ValueError:
+        await update.message.reply_text("❌ لطفاً یک عدد معتبر وارد کنید (مثال: 4):")
         return FREIGHT_INPUT
 
 async def port_input(update: Update, context):
@@ -409,7 +414,7 @@ async def port_input(update: Update, context):
         del user_data[uid]
         return ConversationHandler.END
     except Exception as e:
-        await update.message.reply_text(f"❌ خطا: عدد معتبر وارد کنید.")
+        await update.message.reply_text(f"❌ خطا: لطفاً یک عدد معتبر وارد کنید.")
         return PORT_INPUT
 
 async def cancel(update: Update, context):
