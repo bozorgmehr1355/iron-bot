@@ -6,25 +6,30 @@ from datetime import datetime
 import asyncio
 import json
 import re
+from bs4 import BeautifulSoup
 
 # States
 SELECT_PRODUCT, GET_PRICE, GET_RATE, GET_TONNAGE, GET_FREIGHT, GET_PORT = range(6)
 
 user_data = {}
 
+# ========== کش قیمت ایران ==========
+iran_prices_cache = {
+    "data": None,
+    "last_update": None
+}
+
 # ========== نرخ دلار مبادله‌ای (نیمایی) ==========
 def get_usd_nego_rate():
-    """نرخ دلار مبادله‌ای (نیمایی) - سامانه سنا"""
     try:
         r = requests.get("https://www.tgju.org/sana/", timeout=10)
         if r.status_code == 200:
-            # استخراج از متن صفحه (در صورت نیاز)
             match = re.search(r'(\d{1,3}(?:,\d{3})*)\s*ریال', r.text)
             if match:
                 return int(match.group(1).replace(',', ''))
     except:
         pass
-    return 1468000  # نرخ پیش‌فرض (146,800 تومان)
+    return 1468000
 
 # ========== نرخ دلار بازار آزاد ==========
 def get_usd_free_rate():
@@ -47,27 +52,71 @@ def get_usd_free_rate():
                 return price
     except:
         pass
-    return 1780000  # نرخ پیش‌فرض بازار آزاد (178,000 تومان)
+    return 1780000
 
-# ========== نرخ ارز برای محاسبه سود (قابل انتخاب توسط کاربر) ==========
-def get_default_rate():
-    """نرخ پیش‌فرض - کاربر می‌تواند انتخاب کند"""
-    return 1468000  # نرخ نیمایی پیش‌فرض
-
-# ========== قیمت‌های جهانی ==========
-def get_global_prices():
-    return {
-        "concentrate": {"name": "کنسانتره سنگ آهن", "fob_pg": 85, "north": 130, "south": 131},
-        "pellet": {"name": "گندله", "fob_pg": 105, "north": 155, "south": 156},
-        "dri": {"name": "آهن اسفنجی", "fob_pg": 200, "north": 280, "south": 282},
-        "billet": {"name": "شمش فولادی", "fob_pg": 480, "north": 520, "south": 515},
-        "rebar": {"name": "میلگرد", "fob_pg": 550, "north": 600, "south": 595}
-    }
-
-# ========== قیمت‌های دقیق ایران ==========
-def get_iran_prices():
-    """دریافت قیمت محصولات از بازار ایران (بورس + بازار آزاد + کارخانه‌ها)"""
+# ========== Web Scraping از آهن ملل ==========
+async def scrape_ahanmelal():
+    """دریافت قیمت‌های به‌روز از سایت آهن ملل"""
+    prices = {}
     
+    # آدرس صفحات قیمت محصولات
+    urls = {
+        "billet": "https://ahanmelal.com/steel-ingots/steel-ingot-price",
+        "rebar": "https://ahanmelal.com/steel-products/rebar-price",
+        "concentrate": "https://ahanmelal.com/iron-ore/concentrate-price",
+        "pellet": "https://ahanmelal.com/iron-ore/pellet-price",
+        "dri": "https://ahanmelal.com/sponge-iron/sponge-iron-price"
+    }
+    
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+    }
+    
+    for product, url in urls.items():
+        try:
+            response = requests.get(url, headers=headers, timeout=15)
+            if response.status_code == 200:
+                soup = BeautifulSoup(response.text, 'html.parser')
+                
+                # جستجو برای قیمت (سلکتورها بر اساس ساختار واقعی سایت)
+                price_elem = soup.find('div', class_='product-price')
+                if not price_elem:
+                    price_elem = soup.find('span', class_='price')
+                if not price_elem:
+                    price_elem = soup.find('div', class_='current-price')
+                
+                if price_elem:
+                    price_text = price_elem.get_text(strip=True)
+                    # استخراج عدد از متن (مثلاً "43,091 تومان" -> 43091)
+                    numbers = re.findall(r'([\d,]+)', price_text)
+                    if numbers:
+                        raw_price = numbers[0].replace(',', '')
+                        prices[product] = int(raw_price)
+        except Exception as e:
+            print(f"Error scraping {product}: {e}")
+            prices[product] = None
+    
+    return prices
+
+# ========== دریافت قیمت‌های ایران (با کش و بروزرسانی خودکار) ==========
+async def get_iran_prices():
+    """دریافت قیمت محصولات با بروزرسانی خودکار هر 6 ساعت"""
+    global iran_prices_cache
+    
+    now = datetime.now()
+    
+    # اگر کش معتبر است (کمتر از 6 ساعت گذشته)
+    if iran_prices_cache["data"] and iran_prices_cache["last_update"]:
+        time_diff = (now - iran_prices_cache["last_update"]).total_seconds()
+        if time_diff < 21600:  # 6 ساعت
+            return iran_prices_cache["data"]
+    
+    # در غیر این صورت، داده‌های جدید بگیر
+    print("🔄 بروزرسانی قیمت‌های ایران از آهن ملل...")
+    
+    scraped_prices = await scrape_ahanmelal()
+    
+    # قیمت‌های پیش‌فرض (در صورت عدم موفقیت اسکرپینگ)
     prices = {
         "concentrate": {
             "name": "کنسانتره سنگ آهن",
@@ -103,7 +152,34 @@ def get_iran_prices():
         }
     }
     
+    # به‌روزرسانی قیمت شمش از داده‌های اسکرپ شده
+    if scraped_prices.get("billet"):
+        billet_price = scraped_prices["billet"]
+        prices["billet"]["free_market"] = f"{billet_price:,} - {billet_price + 2000:,}"
+        prices["billet"]["factory"] = f"اصفهان: {billet_price:,}"
+    
+    # به‌روزرسانی قیمت میلگرد
+    if scraped_prices.get("rebar"):
+        rebar_price = scraped_prices["rebar"]
+        prices["rebar"]["free_market"] = f"{rebar_price:,} - {rebar_price + 1000:,}"
+    
+    # ذخیره در کش
+    iran_prices_cache["data"] = prices
+    iran_prices_cache["last_update"] = now
+    
+    print(f"✅ قیمت‌های ایران بروزرسانی شد: {now.strftime('%Y/%m/%d - %H:%M')}")
+    
     return prices
+
+# ========== قیمت‌های جهانی ==========
+def get_global_prices():
+    return {
+        "concentrate": {"name": "کنسانتره سنگ آهن", "fob_pg": 85, "north": 130, "south": 131},
+        "pellet": {"name": "گندله", "fob_pg": 105, "north": 155, "south": 156},
+        "dri": {"name": "آهن اسفنجی", "fob_pg": 200, "north": 280, "south": 282},
+        "billet": {"name": "شمش فولادی", "fob_pg": 480, "north": 520, "south": 515},
+        "rebar": {"name": "میلگرد", "fob_pg": 550, "north": 600, "south": 595}
+    }
 
 # ========== شروع ==========
 async def start(update: Update, context):
@@ -140,12 +216,19 @@ async def main_menu_handler(update: Update, context):
         await query.edit_message_text(text, parse_mode="Markdown")
     
     elif query.data == "show_iran":
-        iran_prices = get_iran_prices()
+        iran_prices = await get_iran_prices()
         nego_rate = get_usd_nego_rate()
         free_rate = get_usd_free_rate()
         
+        # اطلاعات بروزرسانی
+        last_update = iran_prices_cache["last_update"]
+        if last_update:
+            update_text = f"🔄 آخرین بروزرسانی: {last_update.strftime('%Y/%m/%d - %H:%M')}"
+        else:
+            update_text = "🔄 در حال دریافت اطلاعات..."
+        
         text = "🇮🇷 *قیمت‌های داخلی ایران* 🇮🇷\n"
-        text += f"🔄 {datetime.now().strftime('%Y/%m/%d - %H:%M')}\n\n"
+        text += f"{update_text}\n\n"
         
         text += "💱 *نرخ ارز:*\n"
         text += f"   • دلار مبادله‌ای (نیمایی): {nego_rate//10:,} تومان ({nego_rate:,} ریال)\n"
@@ -171,7 +254,7 @@ async def main_menu_handler(update: Update, context):
         
         text += "\n═══════════════════════════\n"
         text += "📌 منابع: بورس کالا، آهن ملل، نوبیتکس، TGJU\n"
-        text += "📆 قیمت‌ها به‌طور خودکار از منابع معتبر دریافت می‌شوند."
+        text += "📆 قیمت‌ها هر 6 ساعت به‌طور خودکار بروزرسانی می‌شوند."
         
         await query.edit_message_text(text, parse_mode="Markdown")
     
@@ -344,6 +427,19 @@ async def cancel(update: Update, context):
         del user_data[uid]
     await update.message.reply_text("❌ عملیات لغو شد.")
 
+# ========== وظیفه زمانبندی شده برای بروزرسانی خودکار قیمت‌ها ==========
+async def scheduled_price_update(app):
+    """هر 6 ساعت یکبار قیمت‌های ایران را بروزرسانی می‌کند"""
+    while True:
+        try:
+            await asyncio.sleep(21600)  # 6 ساعت
+            print("🔄 بروزرسانی خودکار قیمت‌های ایران...")
+            await get_iran_prices()
+            print("✅ بروزرسانی خودکار کامل شد")
+        except Exception as e:
+            print(f"❌ خطا در بروزرسانی خودکار: {e}")
+
+# ========== اجرای اصلی ==========
 def main():
     TOKEN = os.environ.get("BOT_TOKEN")
     if not TOKEN:
@@ -367,6 +463,14 @@ def main():
     
     app.add_handler(CommandHandler("start", start))
     app.add_handler(conv_handler)
+    
+    # شروع وظیفه زمانبندی شده برای بروزرسانی خودکار قیمت‌ها
+    async def post_init(application):
+        asyncio.create_task(scheduled_price_update(application))
+        # یک بار در شروع ربات قیمت‌ها را بروزرسانی کن
+        await get_iran_prices()
+    
+    app.post_init = post_init
     
     print("🤖 ربات روشن شد!")
     app.run_polling()
