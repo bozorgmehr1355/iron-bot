@@ -334,6 +334,8 @@ def main():
             "price": [MessageHandler(filters.TEXT & ~filters.COMMAND, alert_price)],
         },
         fallbacks=[CommandHandler("cancel", cancel)],
+        name="alert_conversation",
+        persistent=False,
     )
     
     # مکالمه محاسبه سود
@@ -349,6 +351,8 @@ def main():
             PORT: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_port)],
         },
         fallbacks=[CommandHandler("cancel", cancel)],
+        name="profit_conversation",
+        persistent=False,
     )
     
     app.add_handler(CommandHandler("start", start))
@@ -357,11 +361,11 @@ def main():
     app.add_handler(alert_conv)
     app.add_handler(CommandHandler("cancel", cancel))
     
-    # ✅ راه‌اندازی صحیح تسک بررسی هشدارها
-    async def post_start():
-        asyncio.create_task(check_alerts(app))
+    # راه‌اندازی صحیح تسک بررسی هشدارها
+    async def post_init(application):
+        asyncio.create_task(check_alerts(application))
     
-    app.post_init = post_start
+    app.post_init = post_init
     
     print("ربات روشن شد")
     app.run_polling()
