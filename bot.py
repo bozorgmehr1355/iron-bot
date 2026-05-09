@@ -34,7 +34,7 @@ def get_usd_rial_rate():
         pass
     return 1315000
 
-# ========== قیمت‌های جهانی (فقط دلار) ==========
+# ========== قیمت‌های جهانی ==========
 def get_global_prices():
     return {
         "iron_ore_62": {"name": "سنگ آهن ۶۲٪", "global": 112.8, "north": 111.5, "south": 112.0, "fob_pg": 89.5},
@@ -76,7 +76,7 @@ async def back_to_menu(update: Update, context):
     )
     return ConversationHandler.END
 
-# ========== قیمت جهانی (فقط دلار) ==========
+# ========== قیمت جهانی ==========
 async def global_price_handler(update: Update, context):
     query = update.callback_query
     await query.answer()
@@ -270,7 +270,7 @@ async def alert_back_product(update: Update, context):
     await query.answer()
     await alert_product_select(update, context)
 
-# ========== محاسبه سود ==========
+# ========== محاسبه سود (اصلاح شده) ==========
 async def profit_menu(update: Update, context):
     query = update.callback_query
     await query.answer()
@@ -304,7 +304,7 @@ async def profit_product_select(update: Update, context):
     }
     product_name = product_map.get(query.data)
     if not product_name:
-        return
+        return None
     
     user_data[user_id]["product"] = product_name
     product_data = get_global_product_price(product_name)
@@ -432,12 +432,12 @@ async def check_alerts(app):
                     if (cond == "below" and current < target) or (cond == "above" and current > target):
                         await app.bot.send_message(
                             uid,
-                            f"🚨 *هشدار قیمتی!*\n\n📦 محصول: {product}\n💰 قیمت فعلی: {current} دلار\n🎯 هدف: {cond} {target} دلار",
+                            f"🚨 *هشدار قیمتی!*\n\n📦 محصول: {product}\n📍 بندر: {port}\n💰 قیمت فعلی: {current} دلار\n🎯 هدف: {cond} {target} دلار",
                             parse_mode="Markdown"
                         )
                         deactivate_alert(pid)
         except:
-            pass
+            await asyncio.sleep(60)
 
 # ========== اجرای اصلی ==========
 def main():
@@ -468,7 +468,7 @@ def main():
     profit_conv = ConversationHandler(
         entry_points=[CallbackQueryHandler(profit_menu, pattern="^menu_profit$")],
         states={
-            PRODUCT_SELECT: [CallbackQueryHandler(profit_product_select, pattern="^profit_")],
+            PRODUCT_SELECT: [CallbackQueryHandler(profit_product_select, pattern="^profit_iron|profit_fe|profit_pellet|profit_billet$")],
             PURCHASE_PRICE: [MessageHandler(filters.TEXT & ~filters.COMMAND, purchase_input)],
             RATE_SELECT: [MessageHandler(filters.TEXT & ~filters.COMMAND, rate_input)],
             TONNAGE_INPUT: [MessageHandler(filters.TEXT & ~filters.COMMAND, tonnage_input)],
