@@ -34,13 +34,35 @@ def get_usd_rial_rate():
         pass
     return 1315000
 
-# ========== قیمت‌های جهانی ==========
+# ========== قیمت‌های جهانی محصولات (به‌روز با ترتیب جدید) ==========
 def get_global_prices():
+    """قیمت‌های تقریبی تا زمان اتصال API معتبر"""
     return {
-        "iron_ore_62": {"name": "سنگ آهن ۶۲٪", "global": 112.8, "north": 111.5, "south": 112.0, "fob_pg": 89.5},
-        "fe_65": {"name": "کنسانتره آهن ۶۵٪", "global": 136.0, "north": 135.0, "south": 135.5, "fob_pg": 95.0},
-        "pellet": {"name": "گندله", "global": 157.5, "north": 156.5, "south": 158.0, "fob_pg": 110.0},
-        "billet": {"name": "بیلت", "global": 525.0, "north": 530.0, "south": 520.0, "fob_pg": 480.0}
+        "concentrate": {
+            "name": "کنسانتره سنگ آهن",
+            "fob_pg": 85, "north": 130, "south": 131,
+            "icon": "⚙️"
+        },
+        "pellet": {
+            "name": "گندله",
+            "fob_pg": 105, "north": 155, "south": 156,
+            "icon": "🟤"
+        },
+        "dri": {
+            "name": "آهن اسفنجی",
+            "fob_pg": 200, "north": 280, "south": 282,
+            "icon": "🏭"
+        },
+        "billet": {
+            "name": "شمش فولادی (بیلت)",
+            "fob_pg": 480, "north": 520, "south": 515,
+            "icon": "🔩"
+        },
+        "rebar": {
+            "name": "میلگرد",
+            "fob_pg": 550, "north": 600, "south": 595,
+            "icon": "📏"
+        }
     }
 
 def get_global_product_price(product_name):
@@ -61,7 +83,14 @@ def get_main_menu():
 
 async def start(update: Update, context):
     await update.message.reply_text(
-        "🏭 *ربات تخصصی سنگ آهن و فلزات* 🏭\n\nلطفاً یکی از گزینه‌ها را انتخاب کنید:",
+        "🏭 *ربات تخصصی زنجیره آهن و فولاد* 🏭\n\n"
+        "📌 محصولات تحت پوشش:\n"
+        "1. کنسانتره سنگ آهن\n"
+        "2. گندله\n"
+        "3. آهن اسفنجی\n"
+        "4. شمش فولادی\n"
+        "5. میلگرد\n\n"
+        "لطفاً یکی از گزینه‌ها را انتخاب کنید:",
         reply_markup=get_main_menu(),
         parse_mode="Markdown"
     )
@@ -70,13 +99,20 @@ async def back_to_menu(update: Update, context):
     query = update.callback_query
     await query.answer()
     await query.edit_message_text(
-        "🏭 *ربات تخصصی سنگ آهن و فلزات* 🏭\n\nلطفاً یکی از گزینه‌ها را انتخاب کنید:",
+        "🏭 *ربات تخصصی زنجیره آهن و فولاد* 🏭\n\n"
+        "📌 محصولات تحت پوشش:\n"
+        "1. کنسانتره سنگ آهن\n"
+        "2. گندله\n"
+        "3. آهن اسفنجی\n"
+        "4. شمش فولادی\n"
+        "5. میلگرد\n\n"
+        "لطفاً یکی از گزینه‌ها را انتخاب کنید:",
         reply_markup=get_main_menu(),
         parse_mode="Markdown"
     )
     return ConversationHandler.END
 
-# ========== قیمت جهانی ==========
+# ========== قیمت جهانی (با محصولات جدید و ترتیب اصلاح شده) ==========
 async def global_price_handler(update: Update, context):
     query = update.callback_query
     await query.answer()
@@ -84,11 +120,9 @@ async def global_price_handler(update: Update, context):
     rate = get_usd_rial_rate()
     
     text = f"🌍 *قیمت‌های جهانی* 🌍\n🔄 {datetime.now().strftime('%Y/%m/%d - %H:%M')}\n💱 نرخ دلار: **{rate:,} ریال**\n\n"
-    icon_map = {"سنگ آهن ۶۲٪": "🪨", "کنسانتره آهن ۶۵٪": "⚙️", "گندله": "🟤", "بیلت": "🔩"}
     
     for key, data in prices.items():
-        icon = icon_map.get(data["name"], "📦")
-        text += f"{icon} *{data['name']}*\n"
+        text += f"{data['icon']} *{data['name']}*\n"
         text += f"   🇮🇷 FOB خلیج فارس: *${data['fob_pg']}*\n"
         text += f"   🇨🇳 CFR شمال چین: *${data['north']}*\n"
         text += f"   🇨🇳 CFR جنوب چین: *${data['south']}*\n\n"
@@ -99,15 +133,16 @@ async def global_price_handler(update: Update, context):
         parse_mode="Markdown"
     )
 
-# ========== مقایسه قیمت ==========
+# ========== مقایسه قیمت (با محصولات جدید) ==========
 async def compare_menu(update: Update, context):
     query = update.callback_query
     await query.answer()
     keyboard = [
-        [InlineKeyboardButton("🪨 سنگ آهن ۶۲٪", callback_data="compare_iron_ore_62")],
-        [InlineKeyboardButton("⚙️ کنسانتره آهن ۶۵٪", callback_data="compare_fe_65")],
+        [InlineKeyboardButton("⚙️ کنسانتره سنگ آهن", callback_data="compare_concentrate")],
         [InlineKeyboardButton("🟤 گندله", callback_data="compare_pellet")],
-        [InlineKeyboardButton("🔩 بیلت", callback_data="compare_billet")],
+        [InlineKeyboardButton("🏭 آهن اسفنجی", callback_data="compare_dri")],
+        [InlineKeyboardButton("🔩 شمش فولادی", callback_data="compare_billet")],
+        [InlineKeyboardButton("📏 میلگرد", callback_data="compare_rebar")],
         [InlineKeyboardButton("🔙 بازگشت به منوی اصلی", callback_data="back_to_menu")]
     ]
     await query.edit_message_text(
@@ -121,10 +156,11 @@ async def compare_handler(update: Update, context):
     await query.answer()
     
     product_map = {
-        "compare_iron_ore_62": "سنگ آهن ۶۲٪",
-        "compare_fe_65": "کنسانتره آهن ۶۵٪",
+        "compare_concentrate": "کنسانتره سنگ آهن",
         "compare_pellet": "گندله",
-        "compare_billet": "بیلت"
+        "compare_dri": "آهن اسفنجی",
+        "compare_billet": "شمش فولادی (بیلت)",
+        "compare_rebar": "میلگرد"
     }
     product_name = product_map.get(query.data)
     if not product_name:
@@ -151,15 +187,16 @@ async def compare_back(update: Update, context):
     await query.answer()
     await compare_menu(update, context)
 
-# ========== تنظیم هشدار ==========
+# ========== تنظیم هشدار (با محصولات جدید) ==========
 async def alert_menu(update: Update, context):
     query = update.callback_query
     await query.answer()
     keyboard = [
-        [InlineKeyboardButton("🪨 سنگ آهن ۶۲٪", callback_data="alert_iron_ore_62")],
-        [InlineKeyboardButton("⚙️ کنسانتره آهن ۶۵٪", callback_data="alert_fe_65")],
+        [InlineKeyboardButton("⚙️ کنسانتره سنگ آهن", callback_data="alert_concentrate")],
         [InlineKeyboardButton("🟤 گندله", callback_data="alert_pellet")],
-        [InlineKeyboardButton("🔩 بیلت", callback_data="alert_billet")],
+        [InlineKeyboardButton("🏭 آهن اسفنجی", callback_data="alert_dri")],
+        [InlineKeyboardButton("🔩 شمش فولادی", callback_data="alert_billet")],
+        [InlineKeyboardButton("📏 میلگرد", callback_data="alert_rebar")],
         [InlineKeyboardButton("🔙 بازگشت به منوی اصلی", callback_data="back_to_menu")]
     ]
     await query.edit_message_text(
@@ -173,10 +210,11 @@ async def alert_product_select(update: Update, context):
     await query.answer()
     
     product_map = {
-        "alert_iron_ore_62": "سنگ آهن ۶۲٪",
-        "alert_fe_65": "کنسانتره آهن ۶۵٪",
+        "alert_concentrate": "کنسانتره سنگ آهن",
         "alert_pellet": "گندله",
-        "alert_billet": "بیلت"
+        "alert_dri": "آهن اسفنجی",
+        "alert_billet": "شمش فولادی (بیلت)",
+        "alert_rebar": "میلگرد"
     }
     product_name = product_map.get(query.data)
     if not product_name:
@@ -270,7 +308,7 @@ async def alert_back_product(update: Update, context):
     await query.answer()
     await alert_product_select(update, context)
 
-# ========== محاسبه سود ==========
+# ========== محاسبه سود (با محصولات جدید) ==========
 async def profit_menu(update: Update, context):
     query = update.callback_query
     await query.answer()
@@ -278,10 +316,11 @@ async def profit_menu(update: Update, context):
     user_data[user_id] = {}
     
     keyboard = [
-        [InlineKeyboardButton("🪨 سنگ آهن ۶۲٪", callback_data="profit_iron_ore_62")],
-        [InlineKeyboardButton("⚙️ کنسانتره آهن ۶۵٪", callback_data="profit_fe_65")],
+        [InlineKeyboardButton("⚙️ کنسانتره سنگ آهن", callback_data="profit_concentrate")],
         [InlineKeyboardButton("🟤 گندله", callback_data="profit_pellet")],
-        [InlineKeyboardButton("🔩 بیلت", callback_data="profit_billet")],
+        [InlineKeyboardButton("🏭 آهن اسفنجی", callback_data="profit_dri")],
+        [InlineKeyboardButton("🔩 شمش فولادی", callback_data="profit_billet")],
+        [InlineKeyboardButton("📏 میلگرد", callback_data="profit_rebar")],
         [InlineKeyboardButton("🔙 بازگشت", callback_data="back_to_menu")]
     ]
     await query.edit_message_text(
@@ -297,10 +336,11 @@ async def profit_product_select(update: Update, context):
     user_id = query.from_user.id
     
     product_map = {
-        "profit_iron_ore_62": "سنگ آهن ۶۲٪",
-        "profit_fe_65": "کنسانتره آهن ۶۵٪",
+        "profit_concentrate": "کنسانتره سنگ آهن",
         "profit_pellet": "گندله",
-        "profit_billet": "بیلت"
+        "profit_dri": "آهن اسفنجی",
+        "profit_billet": "شمش فولادی (بیلت)",
+        "profit_rebar": "میلگرد"
     }
     product_name = product_map.get(query.data)
     if not product_name:
@@ -462,7 +502,7 @@ def main():
     app.add_handler(CallbackQueryHandler(compare_handler, pattern="^compare_"))
     app.add_handler(CallbackQueryHandler(compare_back, pattern="^compare_back$"))
     app.add_handler(CallbackQueryHandler(alert_menu, pattern="^menu_alert$"))
-    app.add_handler(CallbackQueryHandler(alert_product_select, pattern="^alert_iron|alert_fe|alert_pellet|alert_billet$"))
+    app.add_handler(CallbackQueryHandler(alert_product_select, pattern="^alert_concentrate|alert_pellet|alert_dri|alert_billet|alert_rebar$"))
     app.add_handler(CallbackQueryHandler(alert_port_select, pattern="^alert_fob_pg|alert_north|alert_south$"))
     app.add_handler(CallbackQueryHandler(alert_condition_select, pattern="^alert_below|alert_above$"))
     app.add_handler(CallbackQueryHandler(alert_back, pattern="^alert_back$"))
@@ -473,7 +513,7 @@ def main():
     profit_conv = ConversationHandler(
         entry_points=[CallbackQueryHandler(profit_menu, pattern="^menu_profit$")],
         states={
-            PRODUCT_SELECT: [CallbackQueryHandler(profit_product_select, pattern="^profit_iron|profit_fe|profit_pellet|profit_billet$")],
+            PRODUCT_SELECT: [CallbackQueryHandler(profit_product_select, pattern="^profit_concentrate|profit_pellet|profit_dri|profit_billet|profit_rebar$")],
             PURCHASE_PRICE: [MessageHandler(filters.TEXT & ~filters.COMMAND, purchase_input)],
             RATE_SELECT: [MessageHandler(filters.TEXT & ~filters.COMMAND, rate_input)],
             TONNAGE_INPUT: [MessageHandler(filters.TEXT & ~filters.COMMAND, tonnage_input)],
