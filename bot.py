@@ -92,7 +92,7 @@ def get_global_product_price(product_name):
             return data
     return None
 
-# ========== منوی اصلی ==========
+# ========== منوی اصلی (شامل دکمه قیمت ایران) ==========
 def get_main_menu():
     keyboard = [
         [InlineKeyboardButton("📊 محاسبه سود", callback_data="menu_profit")],
@@ -154,7 +154,7 @@ async def global_price_handler(update: Update, context):
         parse_mode="Markdown"
     )
 
-# ========== قیمت داخلی (موقتی – فاز 1 بعداً تکمیل می‌شود) ==========
+# ========== قیمت داخلی ایران (فاز 1 - به زودی تکمیل می‌شود) ==========
 async def local_prices_handler(update: Update, context):
     query = update.callback_query
     await query.answer()
@@ -162,7 +162,10 @@ async def local_prices_handler(update: Update, context):
         "🇮🇷 *قیمت‌های داخلی ایران* 🇮🇷\n"
         "🔄 بروزرسانی: در حال اتصال به منابع...\n\n"
         "🔧 این بخش به زودی با داده‌های لحظه‌ای بورس کالا و بازار آزاد تکمیل خواهد شد.\n"
-        "لطفاً صبور باشید."
+        "لطفاً صبور باشید.\n\n"
+        "📌 محصولات قابل پوشش:\n"
+        "• میلگرد، تیرآهن، ورق گرم، ورق سرد، نبشی، ناودانی، پروفیل\n"
+        "• قیمت‌های بورس کالا (ICE) و بازار آزاد"
     )
     await query.edit_message_text(
         text,
