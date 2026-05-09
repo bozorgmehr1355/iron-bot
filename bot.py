@@ -32,9 +32,8 @@ def get_usd_dirham_rate():
         pass
     return 3.67
 
-# ========== قیمت‌های جهانی (برای هشدار) ==========
+# ========== قیمت‌های جهانی ==========
 def get_global_prices():
-    """دریافت قیمت‌های لحظه‌ای برای هشدار"""
     prices = {
         "iron_ore_62": {"name": "سنگ آهن 62%", "north": 111.5, "south": 112.0},
         "fe_65": {"name": "Fe 65%", "north": 135.0, "south": 135.5},
@@ -42,25 +41,24 @@ def get_global_prices():
         "billet": {"name": "بیلت", "north": 530, "south": 520}
     }
     
-    # ذخیره در دیتابیس
     for key, data in prices.items():
         save_price(data["name"] + " شمال", "north", data["north"])
         save_price(data["name"] + " جنوب", "south", data["south"])
     
     return prices
 
-# ========== بررسی خودکار هشدارها ==========
-async def check_alerts():
-    """هر 15 دقیقه یکبار هشدارها را بررسی می‌کند"""
+# ========== بررسی هشدارها ==========
+async def check_alerts(app):
+    """بررسی دوره‌ای هشدارها"""
     while True:
         try:
+            await asyncio.sleep(900)  # 15 دقیقه
             prices = get_global_prices()
             alerts = get_active_alerts()
             
             for alert in alerts:
                 alert_id, user_id, product, port, condition, target = alert
                 
-                # پیدا کردن قیمت فعلی
                 current_price = None
                 for key, data in prices.items():
                     if data["name"] == product:
@@ -75,9 +73,8 @@ async def check_alerts():
                         triggered = True
                     
                     if triggered:
-                        # ارسال پیام به کاربر
                         try:
-                            await context.bot.send_message(
+                            await app.bot.send_message(
                                 chat_id=user_id,
                                 text=f"🚨 *هشدار قیمتی!*\n\n"
                                      f"محصول: {product}\n"
@@ -90,11 +87,8 @@ async def check_alerts():
                             deactivate_alert(alert_id)
                         except Exception as e:
                             print(f"خطا در ارسال هشدار به {user_id}: {e}")
-            
-            await asyncio.sleep(900)  # 15 دقیقه
         except Exception as e:
             print(f"خطا در بررسی هشدارها: {e}")
-            await asyncio.sleep(900)
 
 # ========== شروع ==========
 async def start(update: Update, context):
@@ -185,7 +179,7 @@ async def alert_price(update: Update, context):
     except:
         await update.message.reply_text("عدد معتبر وارد کنید:")
 
-# ========== محاسبه سود (همان کد قبلی) ==========
+# ========== محاسبه سود ==========
 async def profit_start(update: Update, context):
     query = update.callback_query
     await query.answer()
@@ -318,6 +312,7 @@ async def cancel(update, context):
         del user_data[uid]
     await update.message.reply_text("لغو شد.")
 
+# ========== اجرای اصلی ==========
 def main():
     TOKEN = os.environ.get("BOT_TOKEN")
     if not TOKEN:
@@ -328,10 +323,6 @@ def main():
     init_db()
     
     app = Application.builder().token(TOKEN).build()
-    
-    # ذخیره context برای دسترسی در check_alerts
-    global context
-    context = app
     
     # مکالمه هشدار
     alert_conv = ConversationHandler(
@@ -366,8 +357,11 @@ def main():
     app.add_handler(alert_conv)
     app.add_handler(CommandHandler("cancel", cancel))
     
-    # شروع تسک بررسی هشدارها
-    asyncio.create_task(check_alerts())
+    # ✅ راه‌اندازی صحیح تسک بررسی هشدارها
+    async def post_start():
+        asyncio.create_task(check_alerts(app))
+    
+    app.post_init = post_start
     
     print("ربات روشن شد")
     app.run_polling()
