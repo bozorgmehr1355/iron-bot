@@ -68,17 +68,18 @@ async def get_usd_free_rate_toman() -> int:
         logger.error(f"TGJU error: {e}")
     return 178000
 
-# ========== توابع دریافت قیمت داخلی ایران (آهن‌ملل) ==========
+# ========== وب‌اسکرپینگ آهن‌ملل (قیمت‌های داخلی) ==========
 async def fetch_ahanmelal_price(product_key: str) -> Optional[float]:
-    """اسکرپینگ قیمت محصول از آهن‌ملل – تومان/کیلو (برای شمش، میلگرد، تیرآهن، آهن اسفنجی)"""
+    """دریافت قیمت یک محصول از آهن‌ملل (تومان/کیلو)"""
     urls = {
         "billet": "https://ahanmelal.com/steel-ingots/steel-ingot-price",
         "rebar": "https://ahanmelal.com/steel-products/rebar-price",
         "ibeam": "https://ahanmelal.com/steel-products/ibeam-price",
-        "dri": "https://ahanmelal.com/sponge-iron/sponge-iron-price"
+        "dri": "https://ahanmelal.com/sponge-iron/sponge-iron-price",
     }
     if product_key not in urls:
         return None
+
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
     try:
         async with aiohttp.ClientSession() as session:
@@ -86,12 +87,12 @@ async def fetch_ahanmelal_price(product_key: str) -> Optional[float]:
                 if resp.status == 200:
                     html = await resp.text()
                     soup = BeautifulSoup(html, 'html.parser')
-                    selectors = ['.product-price', '.price', '.current-price', '.price-value']
+                    selectors = ['.product-price', '.price', '.current-price', '.product__price', '.price-value']
                     for sel in selectors:
                         elem = soup.select_one(sel)
                         if elem:
                             txt = elem.get_text(strip=True)
-                            nums = re.findall(r'([\d,]+)', txt)
+                            nums = re.findall(r'(\d{1,3}(?:,\d{3})*)', txt)
                             if nums:
                                 raw = nums[0].replace(',', '')
                                 if raw.isdigit():
@@ -105,7 +106,7 @@ async def get_iran_prices():
     global iran_prices_cache
     now = datetime.now()
     if iran_prices_cache["data"] and iran_prices_cache["last_update"]:
-        if (now - iran_prices_cache["last_update"]).total_seconds() < 21600:  # 6 ساعت
+        if (now - iran_prices_cache["last_update"]).total_seconds() < 21600:
             return iran_prices_cache["data"]
 
     logger.info("Fetching Iran prices from ahanmelal...")
@@ -114,7 +115,7 @@ async def get_iran_prices():
     ibeam_price = await fetch_ahanmelal_price("ibeam")
     dri_price = await fetch_ahanmelal_price("dri")
 
-    # قیمت‌های پیش‌فرض (در صورت عدم موفقیت اسکرپینگ)
+    # مقدار پیش‌فرض در صورت خطا
     billet = billet_price if billet_price else 55000
     rebar = rebar_price if rebar_price else 65000
     ibeam = ibeam_price if ibeam_price else 62000
@@ -200,7 +201,7 @@ def get_back_button(step: str) -> InlineKeyboardMarkup:
     else:
         return InlineKeyboardMarkup([[InlineKeyboardButton("🏠 منوی اصلی", callback_data="back_to_main")]])
 
-# ========== هندلرهای اصلی ==========
+# ========== هندلرهای منوی اصلی ==========
 async def start(update: Update, context):
     keyboard = [
         [InlineKeyboardButton("📊 محاسبه سود", callback_data="start_profit")],
@@ -232,11 +233,12 @@ async def back_to_main(update: Update, context):
     )
     return ConversationHandler.END
 
-# ========== قیمت جهانی (بر اساس تصویر) ==========
+# ========== قیمت جهانی (مطابق با تصویر) ==========
 async def show_global(update: Update, context):
     query = update.callback_query
     await query.answer()
 
+    # داده‌های ثابت – می‌توانید با API به‌روز کنید
     products = [
         {"name": "کنسانتره سنگ آهن", "fob": 85, "north": 130, "south": 131},
         {"name": "گندله", "fob": 105, "north": 155, "south": 156},
@@ -261,7 +263,7 @@ async def show_global(update: Update, context):
         parse_mode="Markdown"
     )
 
-# ========== قیمت ایران (بر اساس تصویر) ==========
+# ========== قیمت ایران (مطابق با تصویر) ==========
 async def show_iran(update: Update, context):
     query = update.callback_query
     await query.answer()
@@ -274,7 +276,6 @@ async def show_iran(update: Update, context):
 
     text = f"🇮🇷 *قیمت‌های داخلی ایران* 🇮🇷\n{upd_txt}\n\n"
 
-    # نرخ ارز
     text += "💱 *نرخ ارز:*\n"
     text += f"   • دلار مبادله‌ای (نیمایی): *{nego:,}* تومان\n"
     text += f"   • دلار بازار آزاد: *{free:,}* تومان\n\n"
@@ -308,7 +309,7 @@ async def show_iran(update: Update, context):
         parse_mode="Markdown"
     )
 
-# ========== محاسبه سود ==========
+# ========== محاسبه سود (Conversation) ==========
 async def start_profit(update: Update, context):
     query = update.callback_query
     await query.answer()
