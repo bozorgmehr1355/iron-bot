@@ -34,18 +34,13 @@ def get_usd_rial_rate():
         pass
     return 1315000
 
-# ========== قیمت‌های جهانی ==========
+# ========== قیمت‌های جهانی (فقط دلار) ==========
 def get_global_prices():
-    rate = get_usd_rial_rate()
     return {
-        "iron_ore_62": {"name": "سنگ آهن ۶۲٪", "global": 112.8, "north": 111.5, "south": 112.0, "fob_pg": 89.5,
-                        "north_rial": int(111.5 * rate), "south_rial": int(112.0 * rate), "fob_rial": int(89.5 * rate)},
-        "fe_65": {"name": "کنسانتره آهن ۶۵٪", "global": 136.0, "north": 135.0, "south": 135.5, "fob_pg": 95.0,
-                  "north_rial": int(135.0 * rate), "south_rial": int(135.5 * rate), "fob_rial": int(95.0 * rate)},
-        "pellet": {"name": "گندله", "global": 157.5, "north": 156.5, "south": 158.0, "fob_pg": 110.0,
-                   "north_rial": int(156.5 * rate), "south_rial": int(158.0 * rate), "fob_rial": int(110.0 * rate)},
-        "billet": {"name": "بیلت", "global": 525.0, "north": 530.0, "south": 520.0, "fob_pg": 480.0,
-                   "north_rial": int(530.0 * rate), "south_rial": int(520.0 * rate), "fob_rial": int(480.0 * rate)}
+        "iron_ore_62": {"name": "سنگ آهن ۶۲٪", "global": 112.8, "north": 111.5, "south": 112.0, "fob_pg": 89.5},
+        "fe_65": {"name": "کنسانتره آهن ۶۵٪", "global": 136.0, "north": 135.0, "south": 135.5, "fob_pg": 95.0},
+        "pellet": {"name": "گندله", "global": 157.5, "north": 156.5, "south": 158.0, "fob_pg": 110.0},
+        "billet": {"name": "بیلت", "global": 525.0, "north": 530.0, "south": 520.0, "fob_pg": 480.0}
     }
 
 def get_global_product_price(product_name):
@@ -81,7 +76,7 @@ async def back_to_menu(update: Update, context):
     )
     return ConversationHandler.END
 
-# ========== قیمت جهانی ==========
+# ========== قیمت جهانی (فقط دلار) ==========
 async def global_price_handler(update: Update, context):
     query = update.callback_query
     await query.answer()
@@ -90,12 +85,13 @@ async def global_price_handler(update: Update, context):
     
     text = f"🌍 *قیمت‌های جهانی* 🌍\n🔄 {datetime.now().strftime('%Y/%m/%d - %H:%M')}\n💱 نرخ دلار: **{rate:,} ریال**\n\n"
     icon_map = {"سنگ آهن ۶۲٪": "🪨", "کنسانتره آهن ۶۵٪": "⚙️", "گندله": "🟤", "بیلت": "🔩"}
+    
     for key, data in prices.items():
         icon = icon_map.get(data["name"], "📦")
         text += f"{icon} *{data['name']}*\n"
-        text += f"   🇮🇷 FOB خلیج فارس: `${data['fob_pg']}` (~ {data['fob_rial']:,} ریال)\n"
-        text += f"   🇨🇳 CFR شمال چین: `${data['north']}` (~ {data['north_rial']:,} ریال)\n"
-        text += f"   🇨🇳 CFR جنوب چین: `${data['south']}` (~ {data['south_rial']:,} ریال)\n\n"
+        text += f"   🇮🇷 FOB خلیج فارس: *${data['fob_pg']}*\n"
+        text += f"   🇨🇳 CFR شمال چین: *${data['north']}*\n"
+        text += f"   🇨🇳 CFR جنوب چین: *${data['south']}*\n\n"
     
     await query.edit_message_text(
         text,
@@ -138,11 +134,10 @@ async def compare_handler(update: Update, context):
     if not data:
         return
     
-    rate = get_usd_rial_rate()
     text = f"📊 *مقایسه قیمت {product_name}*\n\n"
-    text += f"🇮🇷 *FOB خلیج فارس*: `${data['fob_pg']}` ≈ {int(data['fob_pg'] * rate):,} ریال\n"
-    text += f"🇨🇳 *CFR شمال چین*: `${data['north']}` ≈ {int(data['north'] * rate):,} ریال (هزینه حمل: {data['north'] - data['fob_pg']:.1f} دلار)\n"
-    text += f"🇨🇳 *CFR جنوب چین*: `${data['south']}` ≈ {int(data['south'] * rate):,} ریال (هزینه حمل: {data['south'] - data['fob_pg']:.1f} دلار)\n\n"
+    text += f"🇮🇷 *FOB خلیج فارس*: *${data['fob_pg']}*\n"
+    text += f"🇨🇳 *CFR شمال چین*: *${data['north']}* (هزینه حمل: {data['north'] - data['fob_pg']:.1f} دلار)\n"
+    text += f"🇨🇳 *CFR جنوب چین*: *${data['south']}* (هزینه حمل: {data['south'] - data['fob_pg']:.1f} دلار)\n\n"
     text += f"💡 *توصیه*: ارزان‌ترین مقصد {'شمال' if data['north'] < data['south'] else 'جنوب'} چین است."
     
     keyboard = [
@@ -156,7 +151,7 @@ async def compare_back(update: Update, context):
     await query.answer()
     await compare_menu(update, context)
 
-# ========== تنظیم هشدار (با دکمه) ==========
+# ========== تنظیم هشدار ==========
 async def alert_menu(update: Update, context):
     query = update.callback_query
     await query.answer()
