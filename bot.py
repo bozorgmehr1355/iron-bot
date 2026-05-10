@@ -1,207 +1,44 @@
 import os
-import re
-import asyncio
 import logging
 from datetime import datetime
-from typing import Dict, Optional
 
-import aiohttp
-from bs4 import BeautifulSoup
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application, CommandHandler, ConversationHandler,
     MessageHandler, filters, CallbackQueryHandler
 )
 
-# ========== تنظیمات اولیه ==========
+# ماژول‌های جداگانه
+from price_fetcher import (
+    get_usd_nego_rate_toman,
+    get_usd_free_rate_toman,
+    get_iran_prices,
+    iran_prices_cache
+)
+from utils import get_back_button
+
+# ========== تنظیمات لاگ ==========
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
 
-# State های مکالمه محاسبه سود
+# ========== State های مکالمه محاسبه سود ==========
 SELECT_PRODUCT, GET_PRICE, GET_RATE, GET_TONNAGE, GET_FREIGHT, GET_PORT = range(6)
 
 user_data = {}
-iran_prices_cache = {"data": None, "last_update": None}
 
-# ========== نرخ ارز (تومان) ==========
-async def get_usd_nego_rate_toman() -> int:
-    """نرخ دلار مبادله‌ای (نیمایی) – تومان"""
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get("https://www.tgju.org/sana/", timeout=10) as resp:
-                if resp.status == 200:
-                    html = await resp.text()
-                    match = re.search(r'(\d{1,3}(?:,\d{3})*)\s*ریال', html)
-                    if match:
-                        return int(match.group(1).replace(',', '')) // 10
-    except Exception as e:
-        logger.error(f"Error fetching nego rate: {e}")
-    return 146800
+# ========== قیمت‌های جهانی (داده ثابت – می‌توان بعداً API زنده جایگزین کرد) ==========
+GLOBAL_PRODUCTS = [
+    {"name": "کنسانتره سنگ آهن", "fob": 85, "north": 130, "south": 131},
+    {"name": "گندله", "fob": 105, "north": 155, "south": 156},
+    {"name": "آهن اسفنجی", "fob": 200, "north": 280, "south": 282},
+    {"name": "شمش فولادی", "fob": 480, "north": 520, "south": 515},
+    {"name": "میلگرد", "fob": 550, "north": 600, "south": 595},
+]
 
-async def get_usd_free_rate_toman() -> int:
-    """نرخ دلار بازار آزاد – تومان"""
-    # منبع اول: Nobitex
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get("https://api.nobitex.ir/v2/trades", timeout=5) as resp:
-                if resp.status == 200:
-                    data = await resp.json()
-                    price = float(data.get("stats", {}).get("USDT-IRT", {}).get("latest", 0))
-                    if price > 0:
-                        return int(price) // 10
-    except Exception as e:
-        logger.error(f"Nobitex error: {e}")
-    # منبع دوم: TGJU
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get("https://api.tgju.org/v1/price/price_dollar_rl", timeout=5) as resp:
-                if resp.status == 200:
-                    data = await resp.json()
-                    price_str = data.get("price", "0").replace(",", "")
-                    price = int(price_str)
-                    if price > 0:
-                        return price // 10
-    except Exception as e:
-        logger.error(f"TGJU error: {e}")
-    return 178000
-
-# ========== وب‌اسکرپینگ آهن‌ملل (قیمت‌های داخلی) ==========
-async def fetch_ahanmelal_price(product_key: str) -> Optional[float]:
-    """دریافت قیمت یک محصول از آهن‌ملل (تومان/کیلو)"""
-    urls = {
-        "billet": "https://ahanmelal.com/steel-ingots/steel-ingot-price",
-        "rebar": "https://ahanmelal.com/steel-products/rebar-price",
-        "ibeam": "https://ahanmelal.com/steel-products/ibeam-price",
-        "dri": "https://ahanmelal.com/sponge-iron/sponge-iron-price",
-    }
-    if product_key not in urls:
-        return None
-
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(urls[product_key], headers=headers, timeout=15) as resp:
-                if resp.status == 200:
-                    html = await resp.text()
-                    soup = BeautifulSoup(html, 'html.parser')
-                    selectors = ['.product-price', '.price', '.current-price', '.product__price', '.price-value']
-                    for sel in selectors:
-                        elem = soup.select_one(sel)
-                        if elem:
-                            txt = elem.get_text(strip=True)
-                            nums = re.findall(r'(\d{1,3}(?:,\d{3})*)', txt)
-                            if nums:
-                                raw = nums[0].replace(',', '')
-                                if raw.isdigit():
-                                    return int(raw)
-    except Exception as e:
-        logger.error(f"Scrape {product_key} error: {e}")
-    return None
-
-async def get_iran_prices():
-    """دریافت و کش قیمت‌های ایران (بورس، بازار آزاد، کارخانه)"""
-    global iran_prices_cache
-    now = datetime.now()
-    if iran_prices_cache["data"] and iran_prices_cache["last_update"]:
-        if (now - iran_prices_cache["last_update"]).total_seconds() < 21600:
-            return iran_prices_cache["data"]
-
-    logger.info("Fetching Iran prices from ahanmelal...")
-    billet_price = await fetch_ahanmelal_price("billet")
-    rebar_price = await fetch_ahanmelal_price("rebar")
-    ibeam_price = await fetch_ahanmelal_price("ibeam")
-    dri_price = await fetch_ahanmelal_price("dri")
-
-    # مقدار پیش‌فرض در صورت خطا
-    billet = billet_price if billet_price else 55000
-    rebar = rebar_price if rebar_price else 65000
-    ibeam = ibeam_price if ibeam_price else 62000
-    dri = dri_price if dri_price else 15500
-
-    prices = {
-        "concentrate": {
-            "name": "کنسانتره سنگ آهن",
-            "ice": "۴,۲۰۰,۰۰۰ - ۴,۸۰۰,۰۰۰",
-            "free_market": "۵,۴۰۰,۰۰۰ - ۵,۸۰۰,۰۰۰",
-            "factory": "گل گهر: ۴,۳۰۰,۰۰۰ | مرکزی: ۴,۶۰۰,۰۰۰",
-            "unit": "تن"
-        },
-        "pellet": {
-            "name": "گندله",
-            "ice": "۶,۲۰۰,۰۰۰ - ۶,۸۰۰,۰۰۰",
-            "free_market": "۶,۸۰۰,۰۰۰ - ۷,۵۰۰,۰۰۰",
-            "factory": "گل گهر: ۶,۴۰۰,۰۰۰ | چادرملو: ۶,۳۰۰,۰۰۰",
-            "unit": "تن"
-        },
-        "dri": {
-            "name": "آهن اسفنجی",
-            "ice": f"{int(dri*0.95):,} - {int(dri*1.02):,}",
-            "free_market": f"{int(dri*0.98):,} - {int(dri*1.05):,}",
-            "factory": f"میانگین: {int(dri):,}",
-            "unit": "کیلو"
-        },
-        "billet": {
-            "name": "شمش فولادی",
-            "ice": f"{int(billet*0.95):,} - {int(billet*1.02):,}",
-            "free_market": f"{int(billet*0.98):,} - {int(billet*1.05):,}",
-            "factory": f"اصفهان: {billet:,} | یزد: {billet-500:,} | قزوین: {billet-1500:,}",
-            "unit": "کیلو"
-        },
-        "rebar": {
-            "name": "میلگرد",
-            "ice": f"{int(rebar*0.95):,} - {int(rebar*1.02):,}",
-            "free_market": f"{int(rebar*0.98):,} - {int(rebar*1.05):,}",
-            "factory": f"ذوب آهن: {rebar:,} | امیرکبیر: {rebar+1000:,}",
-            "unit": "کیلو"
-        },
-        "ibeam": {
-            "name": "تیرآهن",
-            "ice": f"{int(ibeam*0.95):,} - {int(ibeam*1.02):,}",
-            "free_market": f"{int(ibeam*0.98):,} - {int(ibeam*1.05):,}",
-            "factory": f"ذوب آهن: {ibeam:,}",
-            "unit": "کیلو"
-        }
-    }
-    iran_prices_cache["data"] = prices
-    iran_prices_cache["last_update"] = now
-    return prices
-
-# ========== دکمه بازگشت ==========
-def get_back_button(step: str) -> InlineKeyboardMarkup:
-    if step == "main":
-        return InlineKeyboardMarkup([[InlineKeyboardButton("🏠 منوی اصلی", callback_data="back_to_main")]])
-    elif step == "price":
-        return InlineKeyboardMarkup([
-            [InlineKeyboardButton("🔙 بازگشت به انتخاب محصول", callback_data="back_to_product")],
-            [InlineKeyboardButton("🏠 منوی اصلی", callback_data="back_to_main")]
-        ])
-    elif step == "rate":
-        return InlineKeyboardMarkup([
-            [InlineKeyboardButton("🔙 بازگشت به قیمت خرید", callback_data="back_to_price")],
-            [InlineKeyboardButton("🏠 منوی اصلی", callback_data="back_to_main")]
-        ])
-    elif step == "tonnage":
-        return InlineKeyboardMarkup([
-            [InlineKeyboardButton("🔙 بازگشت به نرخ ارز", callback_data="back_to_rate")],
-            [InlineKeyboardButton("🏠 منوی اصلی", callback_data="back_to_main")]
-        ])
-    elif step == "freight":
-        return InlineKeyboardMarkup([
-            [InlineKeyboardButton("🔙 بازگشت به تناژ", callback_data="back_to_tonnage")],
-            [InlineKeyboardButton("🏠 منوی اصلی", callback_data="back_to_main")]
-        ])
-    elif step == "port":
-        return InlineKeyboardMarkup([
-            [InlineKeyboardButton("🔙 بازگشت به هزینه حمل", callback_data="back_to_freight")],
-            [InlineKeyboardButton("🏠 منوی اصلی", callback_data="back_to_main")]
-        ])
-    else:
-        return InlineKeyboardMarkup([[InlineKeyboardButton("🏠 منوی اصلی", callback_data="back_to_main")]])
-
-# ========== هندلرهای منوی اصلی ==========
+# ========== منوی اصلی ==========
 async def start(update: Update, context):
     keyboard = [
         [InlineKeyboardButton("📊 محاسبه سود", callback_data="start_profit")],
@@ -210,7 +47,12 @@ async def start(update: Update, context):
     ]
     await update.message.reply_text(
         "🏭 *ربات تخصصی زنجیره آهن و فولاد* 🏭\n\n"
-        "📌 محصولات تحت پوشش: کنسانتره، گندله، آهن اسفنجی، شمش، میلگرد\n\n"
+        "📌 محصولات تحت پوشش:\n"
+        "• کنسانتره سنگ آهن\n"
+        "• گندله\n"
+        "• آهن اسفنجی\n"
+        "• شمش فولادی\n"
+        "• میلگرد\n\n"
         "لطفاً یکی از گزینه‌ها را انتخاب کنید:",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="Markdown"
@@ -226,29 +68,25 @@ async def back_to_main(update: Update, context):
     ]
     await query.edit_message_text(
         "🏭 *ربات تخصصی زنجیره آهن و فولاد* 🏭\n\n"
-        "📌 محصولات تحت پوشش: کنسانتره، گندله، آهن اسفنجی، شمش، میلگرد\n\n"
+        "📌 محصولات تحت پوشش:\n"
+        "• کنسانتره سنگ آهن\n"
+        "• گندله\n"
+        "• آهن اسفنجی\n"
+        "• شمش فولادی\n"
+        "• میلگرد\n\n"
         "لطفاً یکی از گزینه‌ها را انتخاب کنید:",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="Markdown"
     )
     return ConversationHandler.END
 
-# ========== قیمت جهانی (مطابق با تصویر) ==========
+# ========== قیمت جهانی ==========
 async def show_global(update: Update, context):
     query = update.callback_query
     await query.answer()
 
-    # داده‌های ثابت – می‌توانید با API به‌روز کنید
-    products = [
-        {"name": "کنسانتره سنگ آهن", "fob": 85, "north": 130, "south": 131},
-        {"name": "گندله", "fob": 105, "north": 155, "south": 156},
-        {"name": "آهن اسفنجی", "fob": 200, "north": 280, "south": 282},
-        {"name": "شمش فولادی", "fob": 480, "north": 520, "south": 515},
-        {"name": "میلگرد", "fob": 550, "north": 600, "south": 595},
-    ]
-
     text = "🌍 *قیمت‌های جهانی* 🌍\n\n"
-    for p in products:
+    for p in GLOBAL_PRODUCTS:
         text += f"• *{p['name']}*\n"
         text += f"   🇮🇷 FOB خلیج فارس: *${p['fob']}*\n"
         text += f"   🇨🇳 CFR شمال چین: *${p['north']}*\n"
@@ -263,45 +101,35 @@ async def show_global(update: Update, context):
         parse_mode="Markdown"
     )
 
-# ========== قیمت ایران (مطابق با تصویر) ==========
+# ========== قیمت ایران ==========
 async def show_iran(update: Update, context):
     query = update.callback_query
     await query.answer()
 
+    iran = await get_iran_prices()
     nego = await get_usd_nego_rate_toman()
     free = await get_usd_free_rate_toman()
-    iran = await get_iran_prices()
-    last = iran_prices_cache.get("last_update")
-    upd_txt = f"🔄 {last.strftime('%H:%M - %Y/%m/%d')}" if last else "🔄 در حال دریافت..."
+
+    last_update = iran_prices_cache.get("last_update")
+    upd_txt = f"🔄 {last_update.strftime('%H:%M - %Y/%m/%d')}" if last_update else "🔄 در حال دریافت..."
 
     text = f"🇮🇷 *قیمت‌های داخلی ایران* 🇮🇷\n{upd_txt}\n\n"
-
     text += "💱 *نرخ ارز:*\n"
     text += f"   • دلار مبادله‌ای (نیمایی): *{nego:,}* تومان\n"
     text += f"   • دلار بازار آزاد: *{free:,}* تومان\n\n"
 
-    # بورس کالا
     text += "🏭 *بورس کالا (ICE) - تومان:*\n"
-    for key, v in iran.items():
-        unit = v.get('unit', 'تن')
-        text += f"   • {v['name']}: *{v['ice']}* تومان/{unit}\n"
-    text += "\n"
-
-    # بازار آزاد
-    text += "🔄 *بازار آزاد - تومان:*\n"
-    for key, v in iran.items():
-        unit = v.get('unit', 'تن')
-        text += f"   • {v['name']}: *{v['free_market']}* تومان/{unit}\n"
-    text += "\n"
-
-    # قیمت درب کارخانه
-    text += "🏭 *قیمت درب کارخانه (تومان/تن):*\n"
-    text += f"   • شمش فولادی: {iran['billet']['factory']}\n"
-    text += f"   • گندله: {iran['pellet']['factory']}\n"
-    text += f"   • کنسانتره: {iran['concentrate']['factory']}\n"
-
-    text += "\n📌 منابع: بورس کالا، آهن ملل، نوبیتکس، TGJU\n"
-    text += "📆 قیمت‌ها هر 6 ساعت به‌طور خودکار بروزرسانی می‌شوند."
+    for k, v in iran.items():
+        text += f"   • {v['name']}: *{v['ice']}* تومان/{v['unit']}\n"
+    text += "\n🔄 *بازار آزاد - تومان:*\n"
+    for k, v in iran.items():
+        text += f"   • {v['name']}: *{v['free_market']}* تومان/{v['unit']}\n"
+    text += "\n🏭 *قیمت درب کارخانه:*\n"
+    text += f"   • شمش: {iran['billet']['factory']} تومان/کیلو\n"
+    text += f"   • میلگرد: {iran['rebar']['factory']} تومان/کیلو\n"
+    text += f"   • گندله: {iran['pellet']['factory']} تومان/تن\n"
+    text += f"   • کنسانتره: {iran['concentrate']['factory']} تومان/تن\n"
+    text += "\n📌 منابع: بورس کالا، آهن ملل، نوبیتکس، TGJU"
 
     await query.edit_message_text(
         text,
@@ -539,13 +367,6 @@ async def back_to_port(update: Update, context):
     )
     return GET_PORT
 
-# ========== وظیفه زمانبندی برای بروزرسانی خودکار ==========
-async def scheduled_price_update():
-    while True:
-        await asyncio.sleep(21600)  # 6 ساعت
-        logger.info("بروزرسانی خودکار قیمت‌های ایران...")
-        await get_iran_prices()
-
 # ========== اجرای اصلی ==========
 def main():
     token = os.environ.get("BOT_TOKEN")
@@ -555,7 +376,7 @@ def main():
 
     app = Application.builder().token(token).build()
 
-    # هندلرهای بازگشت عمومی
+    # هندلرهای عمومی (بازگشت)
     app.add_handler(CallbackQueryHandler(back_to_main, pattern="^back_to_main$"))
     app.add_handler(CallbackQueryHandler(back_to_product, pattern="^back_to_product$"))
     app.add_handler(CallbackQueryHandler(back_to_price, pattern="^back_to_price$"))
@@ -570,7 +391,7 @@ def main():
     app.add_handler(CallbackQueryHandler(start_profit, pattern="^start_profit$"))
 
     # مکالمه محاسبه سود
-    conv = ConversationHandler(
+    conv_handler = ConversationHandler(
         entry_points=[CallbackQueryHandler(start_profit, pattern="^start_profit$")],
         states={
             SELECT_PRODUCT: [CallbackQueryHandler(product_selected, pattern="^prod_")],
@@ -580,17 +401,22 @@ def main():
             GET_FREIGHT: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_freight)],
             GET_PORT: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_port)],
         },
-        fallbacks=[CommandHandler("cancel", cancel)],
+        fallbacks=[CommandHandler("cancel", cancel), CallbackQueryHandler(back_to_main, pattern="^back_to_main$")],
     )
-    app.add_handler(conv)
+    app.add_handler(conv_handler)
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("cancel", cancel))
 
+    # وظیفه زمانبندی برای بروزرسانی خودکار قیمت‌های ایران (در price_fetcher وجود دارد)
+    # ماژول price_fetcher خودش یک تابع scheduled_price_update دارد.
+    # اما برای اطمینان، تابع get_iran_prices را یک بار در post_init صدا می‌زنیم.
     async def post_init(_):
-        asyncio.create_task(scheduled_price_update())
-        await get_iran_prices()
+        await get_iran_prices()  # یک بار اولیه کش را پر کنید
+        # همچنین می‌توانید یک تسک زمانبندی شده در اینجا راه بیندازید
+        # اما فعلاً کش 6 ساعته درون get_iran_prices مدیریت می‌شود.
 
     app.post_init = post_init
+
     logger.info("🤖 ربات روشن شد!")
     app.run_polling()
 
