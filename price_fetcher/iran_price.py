@@ -10,7 +10,6 @@ def get_iran_billet_price():
         r = requests.get(url, headers=headers, timeout=15)
         if r.status_code == 200:
             soup = BeautifulSoup(r.text, 'html.parser')
-            # تلاش با سلکتورهای مختلف
             for sel in ['.product-price', '.price', '.current-price']:
                 elem = soup.select_one(sel)
                 if elem:
