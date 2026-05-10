@@ -1,9 +1,6 @@
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 def get_back_button(step: str) -> InlineKeyboardMarkup:
-    """
-    دکمه بازگشت بر اساس مرحله (main / price / rate / tonnage / freight / port)
-    """
     if step == "main":
         return InlineKeyboardMarkup([[InlineKeyboardButton("🏠 منوی اصلی", callback_data="back_to_main")]])
     elif step == "price":
@@ -34,13 +31,7 @@ def get_back_button(step: str) -> InlineKeyboardMarkup:
     else:
         return InlineKeyboardMarkup([[InlineKeyboardButton("🏠 منوی اصلی", callback_data="back_to_main")]])
 
-
 def to_persian_digits(text: str) -> str:
-    """
-    تبدیل ارقام انگلیسی به فارسی در یک متن
-    اعداد انگلیسی 0-9 را به معادل فارسی (۰-۹) تبدیل می‌کند.
-    سایر کاراکترها بدون تغییر باقی می‌مانند.
-    """
     persian_digits = {
         '0': '۰', '1': '۱', '2': '۲', '3': '۳', '4': '۴',
         '5': '۵', '6': '۶', '7': '۷', '8': '۸', '9': '۹'
