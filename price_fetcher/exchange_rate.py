@@ -11,8 +11,6 @@ def get_usd_rial_rate():
             return int(price_str)
     except:
         pass
-    
-    # Fallback: نرخ تقریبی
     return 1780000
 
 def get_usd_toman_rate():
