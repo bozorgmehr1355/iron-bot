@@ -5,7 +5,6 @@ import requests
 import re
 from datetime import datetime
 
-# فایل ذخیره قیمت‌ها
 DATA_FILE = "prices.json"
 
 def get_usd_free():
@@ -43,7 +42,6 @@ def save_prices(data):
         json.dump(data, f)
 
 def update_exchange_rates():
-    """بروزرسانی نرخ ارز (هر 15 دقیقه)"""
     data = load_prices()
     data["usd_free"] = get_usd_free()
     data["usd_secondary"] = get_usd_secondary()
@@ -52,15 +50,10 @@ def update_exchange_rates():
     print(f"[{datetime.now()}] نرخ ارز بروز شد: آزاد={data['usd_free']}, مبادله‌ای={data['usd_secondary']}")
 
 def start_updater():
-    """اجرای بروزرسانی خودکار در پس‌زمینه"""
-    # بروزرسانی اولیه
     update_exchange_rates()
-    
-    # هر 15 دقیقه نرخ ارز
     def rate_loop():
         while True:
             time.sleep(15 * 60)
             update_exchange_rates()
-    
     thread = threading.Thread(target=rate_loop, daemon=True)
     thread.start()
