@@ -8,7 +8,6 @@ from telegram.ext import (
     MessageHandler, filters, CallbackQueryHandler
 )
 
-# ماژول‌های جداگانه
 from price_fetcher import (
     get_usd_nego_rate_toman,
     get_usd_free_rate_toman,
@@ -29,7 +28,7 @@ SELECT_PRODUCT, GET_PRICE, GET_RATE, GET_TONNAGE, GET_FREIGHT, GET_PORT = range(
 
 user_data = {}
 
-# ========== قیمت‌های جهانی (داده ثابت – می‌توان بعداً API زنده جایگزین کرد) ==========
+# ========== قیمت‌های جهانی (داده ثابت – قابل جایگزینی با API زنده) ==========
 GLOBAL_PRODUCTS = [
     {"name": "کنسانتره سنگ آهن", "fob": 85, "north": 130, "south": 131},
     {"name": "گندله", "fob": 105, "north": 155, "south": 156},
@@ -84,34 +83,24 @@ async def back_to_main(update: Update, context):
 async def show_global(update: Update, context):
     query = update.callback_query
     await query.answer()
-
     text = "🌍 *قیمت‌های جهانی* 🌍\n\n"
     for p in GLOBAL_PRODUCTS:
         text += f"• *{p['name']}*\n"
         text += f"   🇮🇷 FOB خلیج فارس: *${p['fob']}*\n"
         text += f"   🇨🇳 CFR شمال چین: *${p['north']}*\n"
         text += f"   🇨🇳 CFR جنوب چین: *${p['south']}*\n\n"
-
-    text += "📌 منابع: Platts, Fastmarkets, SMM\n"
     text += f"🔄 بروزرسانی: {datetime.now().strftime('%H:%M - %Y/%m/%d')}"
-
-    await query.edit_message_text(
-        text,
-        reply_markup=get_back_button("main"),
-        parse_mode="Markdown"
-    )
+    await query.edit_message_text(text, reply_markup=get_back_button("main"), parse_mode="Markdown")
 
 # ========== قیمت ایران ==========
 async def show_iran(update: Update, context):
     query = update.callback_query
     await query.answer()
-
     iran = await get_iran_prices()
     nego = await get_usd_nego_rate_toman()
     free = await get_usd_free_rate_toman()
-
-    last_update = iran_prices_cache.get("last_update")
-    upd_txt = f"🔄 {last_update.strftime('%H:%M - %Y/%m/%d')}" if last_update else "🔄 در حال دریافت..."
+    last = iran_prices_cache.get("last_update")
+    upd_txt = f"🔄 {last.strftime('%H:%M - %Y/%m/%d')}" if last else "🔄 در حال دریافت..."
 
     text = f"🇮🇷 *قیمت‌های داخلی ایران* 🇮🇷\n{upd_txt}\n\n"
     text += "💱 *نرخ ارز:*\n"
@@ -124,20 +113,16 @@ async def show_iran(update: Update, context):
     text += "\n🔄 *بازار آزاد - تومان:*\n"
     for k, v in iran.items():
         text += f"   • {v['name']}: *{v['free_market']}* تومان/{v['unit']}\n"
+
     text += "\n🏭 *قیمت درب کارخانه:*\n"
     text += f"   • شمش: {iran['billet']['factory']} تومان/کیلو\n"
     text += f"   • میلگرد: {iran['rebar']['factory']} تومان/کیلو\n"
     text += f"   • گندله: {iran['pellet']['factory']} تومان/تن\n"
     text += f"   • کنسانتره: {iran['concentrate']['factory']} تومان/تن\n"
     text += "\n📌 منابع: بورس کالا، آهن ملل، نوبیتکس، TGJU"
+    await query.edit_message_text(text, reply_markup=get_back_button("main"), parse_mode="Markdown")
 
-    await query.edit_message_text(
-        text,
-        reply_markup=get_back_button("main"),
-        parse_mode="Markdown"
-    )
-
-# ========== محاسبه سود (Conversation) ==========
+# ========== محاسبه سود ==========
 async def start_profit(update: Update, context):
     query = update.callback_query
     await query.answer()
@@ -407,13 +392,8 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("cancel", cancel))
 
-    # وظیفه زمانبندی برای بروزرسانی خودکار قیمت‌های ایران (در price_fetcher وجود دارد)
-    # ماژول price_fetcher خودش یک تابع scheduled_price_update دارد.
-    # اما برای اطمینان، تابع get_iran_prices را یک بار در post_init صدا می‌زنیم.
     async def post_init(_):
-        await get_iran_prices()  # یک بار اولیه کش را پر کنید
-        # همچنین می‌توانید یک تسک زمانبندی شده در اینجا راه بیندازید
-        # اما فعلاً کش 6 ساعته درون get_iran_prices مدیریت می‌شود.
+        await get_iran_prices()  # بارگذاری اولیه کش
 
     app.post_init = post_init
 
