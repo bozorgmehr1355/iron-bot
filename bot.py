@@ -10,20 +10,25 @@ TOKEN = os.environ.get("BOT_TOKEN")
 
 async def start(update: Update, context):
     keyboard = [[InlineKeyboardButton("✅ تست", callback_data="test")]]
-    await update.message.reply_text("ربات کار می‌کند!", reply_markup=InlineKeyboardMarkup(keyboard))
+    await update.message.reply_text(
+        "ربات کار می‌کند! روی دکمه کلیک کن:",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
 
-async def test(update: Update, context):
+async def button_handler(update: Update, context):
     query = update.callback_query
     await query.answer()
-    await query.edit_message_text("✅ دکمه کار می‌کند!")
+    await query.message.reply_text("✅ دکمه کار کرد!")  # استفاده از reply_text به جای edit
 
 def main():
     if not TOKEN:
         logger.error("BOT_TOKEN not found!")
         return
+    
     app = Application.builder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CallbackQueryHandler(test, pattern="^test$"))
+    app.add_handler(CallbackQueryHandler(button_handler, pattern="test"))
+    
     logger.info("ربات روشن شد!")
     app.run_polling()
 
