@@ -85,10 +85,10 @@ async def show_global(update: Update, context):
     await query.answer()
     text = "🌍 *قیمت‌های جهانی* 🌍\n\n"
     for p in GLOBAL_PRODUCTS:
-        text += f"• *{p['name']}*\n"
-        text += f"   🇮🇷 FOB خلیج فارس: *${p['fob']}*\n"
-        text += f"   🇨🇳 CFR شمال چین: *${p['north']}*\n"
-        text += f"   🇨🇳 CFR جنوب چین: *${p['south']}*\n\n"
+    text += f"• *{p['name']}*\n"
+    text += f"   🇮🇷 FOB خلیج فارس: *{to_persian_digits(f'${p["fob"]}')}*\n"
+    text += f"   🇨🇳 CFR شمال چین: *{to_persian_digits(f'${p["north"]}')}*\n"
+    text += f"   🇨🇳 CFR جنوب چین: *{to_persian_digits(f'${p["south"]}')}*\n\n"
     text += f"🔄 بروزرسانی: {datetime.now().strftime('%H:%M - %Y/%m/%d')}"
     await query.edit_message_text(text, reply_markup=get_back_button("main"), parse_mode="Markdown")
 
@@ -257,12 +257,13 @@ async def get_port(update: Update, context):
         profit_usd = revenue - total_cost
         profit_toman = profit_usd * rate
         result = (
-            f"📊 *نتیجه محاسبه سود*\n📅 {datetime.now().strftime('%Y/%m/%d - %H:%M')}\n{'─' * 30}\n"
-            f"📦 محصول: {d['product']}\n⚖️ تناژ: {t:,.0f} تن\n💰 قیمت خرید: ${purchase:,.0f}/تن\n"
-            f"💵 قیمت فروش (FOB 20%): ${fob:,.0f}/تن\n{'─' * 30}\n"
-            f"🚢 حمل: ${freight:,.0f}/تن\n⚓ پورت: ${port_cost:,.0f}/تن\n{'─' * 30}\n"
-            f"✅ *سود خالص:*\n🇺🇸 دلار: ${profit_usd:,.0f}\n🇮🇷 تومان: {profit_toman:,.0f} تومان\n{'─' * 30}\n"
-            f"💱 نرخ ارز: {rate:,} تومان"
+    f"📊 *نتیجه محاسبه سود*\n📅 {datetime.now().strftime('%Y/%m/%d - %H:%M')}\n{'─' * 30}\n"
+    f"📦 محصول: {d['product']}\n⚖️ تناژ: {to_persian_digits(f'{t:,.0f}')} تن\n"
+    f"💰 قیمت خرید: {to_persian_digits(f'${purchase:,.0f}')}/تن\n"
+    f"💵 قیمت فروش (FOB 20%): {to_persian_digits(f'${fob:,.0f}')}/تن\n{'─' * 30}\n"
+    f"🚢 حمل: {to_persian_digits(f'${freight:,.0f}')}/تن\n⚓ پورت: {to_persian_digits(f'${port_cost:,.0f}')}/تن\n{'─' * 30}\n"
+    f"✅ *سود خالص:*\n🇺🇸 دلار: {to_persian_digits(f'${profit_usd:,.0f}')}\n🇮🇷 تومان: {to_persian_digits(f'{profit_toman:,.0f}')} تومان\n{'─' * 30}\n"
+    f"💱 نرخ ارز: {to_persian_digits(f'{rate:,}')} تومان"
         )
         await update.message.reply_text(result, reply_markup=get_back_button("main"), parse_mode="Markdown")
         del user_data[uid]
@@ -392,6 +393,29 @@ def main():
     app.add_handler(conv_handler)
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("cancel", cancel))
+
+    async def post_init(_):
+        await get_iran_prices()
+
+    app.post_init = post_init
+    logger.info("🤖 ربات روشن شد!")
+    app.run_polling()
+
+def main():
+    token = os.environ.get("BOT_TOKEN")
+    if not token:
+        logger.error("BOT_TOKEN not found!")
+        return
+
+    app = Application.builder().token(token).build()
+
+    # ثبت هندلرها (مطابق کد قبلی)
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CallbackQueryHandler(back_to_main, pattern="^back_to_main$"))
+    # ... بقیه هندلرها
+
+    conv_handler = ConversationHandler(...)  # تعریف کامل
+    app.add_handler(conv_handler)
 
     async def post_init(_):
         await get_iran_prices()
