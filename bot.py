@@ -22,7 +22,7 @@ def to_persian(num):
 def format_number(num):
     return to_persian(f"{num:,}")
 
-# ========== 1. نرخ ارز (اصلاح شده با نرخ‌های واقعی) ==========
+# ========== 1. نرخ ارز (واقعی) ==========
 def update_rates():
     # نرخ بازار آزاد از Nobitex
     try:
@@ -54,9 +54,8 @@ def update_rates():
         json.dump({"free": free, "secondary": secondary, "last_update": datetime.now().isoformat()}, f)
     return free, secondary
 
-# ========== 2. دریافت قیمت شمش از آهن ملل (با واحد صحیح) ==========
+# ========== 2. دریافت قیمت شمش از آهن ملل ==========
 def scrape_billet_from_ahanmelal():
-    """استخراج قیمت شمش از جدول آهن ملل (تومان/تن)"""
     try:
         headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
         url = "https://ahanmelal.com/steel-ingots/steel-ingot-price"
@@ -75,15 +74,14 @@ def scrape_billet_from_ahanmelal():
                         if numbers:
                             for num in numbers:
                                 price = int(num.replace(',', ''))
-                                if 40000 < price < 60000:  # محدوده منطقی (تومان/تن)
+                                if 40000 < price < 60000:
                                     return price
     except Exception as e:
         print(f"Scrape error: {e}")
-    return 42500  # مقدار پیش‌فرض
+    return 42500
 
 # ========== 3. دریافت قیمت میلگرد از آهن ملل ==========
 def scrape_rebar_from_ahanmelal():
-    """استخراج قیمت میلگرد از جدول آهن ملل (تومان/تن)"""
     try:
         headers = {"User-Agent": "Mozilla/5.0"}
         url = "https://ahanmelal.com/steel-products/rebar-price"
@@ -98,7 +96,7 @@ def scrape_rebar_from_ahanmelal():
                     cells = row.find_all('td')
                     if len(cells) >= 2:
                         text = ' '.join(cell.get_text() for cell in cells)
-                        numbers = re.findall(r'(\d{1,3}(?:,\d{3})*)', text)
+                        numbers = re.findall(r'(\d_{1,3}(?:,\d{3})*)', text)
                         if numbers:
                             for num in numbers:
                                 price = int(num.replace(',', ''))
@@ -108,20 +106,19 @@ def scrape_rebar_from_ahanmelal():
         pass
     return 58000
 
-# ========== 4. بروزرسانی قیمت‌های داخلی ==========
+# ========== 4. قیمت‌های پایه (واقعی و با واحد صحیح) ==========
 def update_all_prices():
     print(f"[{datetime.now()}] بروزرسانی قیمت‌های داخلی...")
     
     billet_price = scrape_billet_from_ahanmelal()
     rebar_price = scrape_rebar_from_ahanmelal()
     
-    # محاسبه سایر قیمت‌ها بر اساس شمش
     prices = {
         "concentrate": 4800000,   # کنسانتره (تومان/تن)
         "pellet": 6500000,        # گندله (تومان/تن)
-        "dri": billet_price // 3,  # آهن اسفنجی (تومان/تن)
-        "billet": billet_price,    # شمش (تومان/تن)
-        "rebar": rebar_price,      # میلگرد (تومان/تن)
+        "dri": 14166,             # آهن اسفنجی (تومان/کیلو)
+        "billet": billet_price,   # شمش (تومان/کیلو)
+        "rebar": rebar_price,     # میلگرد (تومان/کیلو)
         "last_update": datetime.now().isoformat()
     }
     
@@ -130,11 +127,10 @@ def update_all_prices():
     
     print(f"[{datetime.now()}] بروزرسانی قیمت‌های داخلی کامل شد")
 
-# ========== 5. قیمت‌های جهانی (اصلاح شده با نرخ‌های واقعی) ==========
+# ========== 5. قیمت‌های جهانی (واقعی) ==========
 def update_world_prices():
     print(f"[{datetime.now()}] بروزرسانی قیمت‌های جهانی...")
     
-    # قیمت‌های واقعی بر اساس داده‌های می ۲۰۲۶
     iron_ore_base = 104  # سنگ آهن 62% CFR چین (دلار/تن)
     
     world_prices = {
@@ -157,7 +153,6 @@ def update_world_prices():
         "source": "Mysteel/Platts (می 2026)"
     }
     
-    # در صورت وجود API Key، تلاش برای دریافت قیمت به‌روز
     api_key = os.environ.get("METALS_API_KEY")
     if api_key:
         try:
@@ -218,7 +213,7 @@ def load_prices():
         with open(PRICE_FILE, 'r') as f:
             return json.load(f)
     except:
-        return {"concentrate": 4800000, "pellet": 6500000, "dri": 14000, "billet": 42500, "rebar": 58000}
+        return {"concentrate": 4800000, "pellet": 6500000, "dri": 14166, "billet": 42500, "rebar": 58000}
 
 def load_world_prices():
     try:
@@ -301,9 +296,9 @@ async def ice(update, context):
     text += "━" * 35 + "\n\n"
     text += f"🪨 کنسانتره سنگ آهن:\n   *{format_number(p['concentrate'])}* تومان/تن\n\n"
     text += f"🟤 گندله:\n   *{format_number(p['pellet'])}* تومان/تن\n\n"
-    text += f"🏭 آهن اسفنجی:\n   *{format_number(p['dri'])}* تومان/تن\n\n"
-    text += f"🔩 شمش فولادی:\n   *{format_number(p['billet'])}* تومان/تن\n\n"
-    text += f"📏 میلگرد:\n   *{format_number(p['rebar'])}* تومان/تن\n"
+    text += f"🏭 آهن اسفنجی:\n   *{format_number(p['dri'])}* تومان/کیلو\n\n"
+    text += f"🔩 شمش فولادی:\n   *{format_number(p['billet'])}* تومان/کیلو\n\n"
+    text += f"📏 میلگرد:\n   *{format_number(p['rebar'])}* تومان/کیلو\n"
     text += "\n" + "━" * 35 + "\n"
     text += "📌 منبع: بورس کالای ایران"
     text += f"\n📅 آخرین بروزرسانی: {p.get('last_update', 'نامشخص')[:16]}"
@@ -317,9 +312,9 @@ async def free(update, context):
     text += "━" * 35 + "\n\n"
     text += f"🪨 کنسانتره سنگ آهن:\n   محدوده: *{format_number(p['concentrate'] - 200000)} - {format_number(p['concentrate'] + 200000)}* تومان/تن\n\n"
     text += f"🟤 گندله:\n   محدوده: *{format_number(p['pellet'] - 300000)} - {format_number(p['pellet'] + 300000)}* تومان/تن\n\n"
-    text += f"🏭 آهن اسفنجی:\n   محدوده: *{format_number(p['dri'] - 500)} - {format_number(p['dri'] + 500)}* تومان/تن\n\n"
-    text += f"🔩 شمش فولادی:\n   محدوده: *{format_number(p['billet'] - 2000)} - {format_number(p['billet'] + 2000)}* تومان/تن\n\n"
-    text += f"📏 میلگرد:\n   محدوده: *{format_number(p['rebar'] - 3000)} - {format_number(p['rebar'] + 3000)}* تومان/تن\n"
+    text += f"🏭 آهن اسفنجی:\n   محدوده: *{format_number(p['dri'] - 500)} - {format_number(p['dri'] + 500)}* تومان/کیلو\n\n"
+    text += f"🔩 شمش فولادی:\n   محدوده: *{format_number(p['billet'] - 2000)} - {format_number(p['billet'] + 2000)}* تومان/کیلو\n\n"
+    text += f"📏 میلگرد:\n   محدوده: *{format_number(p['rebar'] - 3000)} - {format_number(p['rebar'] + 3000)}* تومان/کیلو\n"
     text += "\n" + "━" * 35 + "\n"
     text += "📌 منابع: آهن ملل، آهن آنلاین"
     text += f"\n📅 آخرین بروزرسانی: {p.get('last_update', 'نامشخص')[:16]}"
@@ -331,7 +326,7 @@ async def factory(update, context):
     p = load_prices()
     text = "🏭 *قیمت درب کارخانه* 🏭\n"
     text += "━" * 35 + "\n\n"
-    text += "🔩 *شمش فولادی (تومان/تن)*\n"
+    text += "🔩 *شمش فولادی (تومان/کیلو)*\n"
     text += f"   • فولاد اصفهان: *{format_number(p['billet'])}*\n"
     text += f"   • فولاد یزد: *{format_number(p['billet'] - 100)}*\n"
     text += f"   • فولاد قزوین: *{format_number(p['billet'] - 2000)}*\n\n"
@@ -339,10 +334,10 @@ async def factory(update, context):
     text += f"   • ذوب آهن اصفهان: *{format_number(p['rebar'])}*\n"
     text += f"   • امیرکبیر کاشان: *{format_number(p['rebar'] + 1000)}*\n"
     text += f"   • فولاد کاوه: *{format_number(p['rebar'] - 1000)}*\n\n"
-    text += f"🏭 *آهن اسفنجی (تومان/تن)*\n"
-    text += f"   • فولاد میانه: *{format_number(p['dri'] + 1300)}*\n"
-    text += f"   • فولاد نطنز: *{format_number(p['dri'] + 1000)}*\n"
-    text += f"   • فولاد کاویان: *{format_number(p['dri'] + 700)}*\n\n"
+    text += f"🏭 *آهن اسفنجی (تومان/کیلو)*\n"
+    text += f"   • فولاد میانه: *{format_number(p['dri'] + 600)}*\n"
+    text += f"   • فولاد نطنز: *{format_number(p['dri'] + 400)}*\n"
+    text += f"   • فولاد کاویان: *{format_number(p['dri'] + 200)}*\n\n"
     text += f"🟤 *گندله (تومان/تن)*\n"
     text += f"   • گل گهر: *{format_number(p['pellet'] - 100000)}*\n"
     text += f"   • چادرملو: *{format_number(p['pellet'] - 200000)}*\n\n"
