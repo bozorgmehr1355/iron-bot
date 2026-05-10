@@ -18,12 +18,16 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# ========== توابع کمکی ==========
 def to_persian_digits(text: str) -> str:
     persian_digits = {'0': '۰', '1': '۱', '2': '۲', '3': '۳', '4': '۴',
                       '5': '۵', '6': '۶', '7': '۷', '8': '۸', '9': '۹'}
-    return ''.join(persian_digits.get(ch, ch) for ch in str(text))
+    result = []
+    for ch in str(text):
+        result.append(persian_digits.get(ch, ch))
+    return ''.join(result)
 
-def get_back_button(step: str) -> InlineKeyboardMarkup:
+def get_back_button(step):
     if step == "main":
         return InlineKeyboardMarkup([[InlineKeyboardButton("🏠 منوی اصلی", callback_data="back_to_main")]])
     elif step == "price":
@@ -54,7 +58,8 @@ def get_back_button(step: str) -> InlineKeyboardMarkup:
     else:
         return InlineKeyboardMarkup([[InlineKeyboardButton("🏠 منوی اصلی", callback_data="back_to_main")]])
 
-async def get_usd_nego_rate_toman() -> int:
+# ========== نرخ ارز ==========
+async def get_usd_nego_rate_toman():
     try:
         async with aiohttp.ClientSession() as session:
             async with session.get("https://www.tgju.org/sana/", timeout=10) as resp:
@@ -67,7 +72,7 @@ async def get_usd_nego_rate_toman() -> int:
         pass
     return 146800
 
-async def get_usd_free_rate_toman() -> int:
+async def get_usd_free_rate_toman():
     try:
         async with aiohttp.ClientSession() as session:
             async with session.get("https://api.tgju.org/v1/price/price_dollar_rl", timeout=5) as resp:
@@ -81,6 +86,7 @@ async def get_usd_free_rate_toman() -> int:
         pass
     return 178000
 
+# ========== قیمت‌های جهانی ==========
 GLOBAL_PRODUCTS = [
     {"name": "کنسانتره سنگ آهن", "fob": 85, "north": 130, "south": 131},
     {"name": "گندله", "fob": 105, "north": 155, "south": 156},
@@ -89,9 +95,10 @@ GLOBAL_PRODUCTS = [
     {"name": "میلگرد", "fob": 550, "north": 600, "south": 595},
 ]
 
+# ========== قیمت‌های داخلی ایران ==========
 iran_prices_cache = {"data": None, "last_update": None}
 
-async def fetch_ahanmelal_price(product_key: str):
+async def fetch_ahanmelal_price(product_key):
     urls = {
         "billet": "https://ahanmelal.com/steel-ingots/steel-ingot-price",
         "rebar": "https://ahanmelal.com/steel-products/rebar-price",
@@ -127,27 +134,74 @@ async def get_iran_prices():
         if (now - iran_prices_cache["last_update"]).total_seconds() < 21600:
             return iran_prices_cache["data"]
 
-    billet = await fetch_ahanmelal_price("billet") or 55000
-    rebar = await fetch_ahanmelal_price("rebar") or 65000
-    ibeam = await fetch_ahanmelal_price("ibeam") or 62000
-    dri = await fetch_ahanmelal_price("dri") or 15500
+    billet = await fetch_ahanmelal_price("billet")
+    rebar = await fetch_ahanmelal_price("rebar")
+    ibeam = await fetch_ahanmelal_price("ibeam")
+    dri = await fetch_ahanmelal_price("dri")
+    
+    if billet is None:
+        billet = 55000
+    if rebar is None:
+        rebar = 65000
+    if ibeam is None:
+        ibeam = 62000
+    if dri is None:
+        dri = 15500
 
     prices = {
-        "concentrate": {"name": "کنسانتره سنگ آهن", "ice": "۴,۲۰۰,۰۰۰ - ۴,۸۰۰,۰۰۰", "free_market": "۵,۴۰۰,۰۰۰ - ۵,۸۰۰,۰۰۰", "factory": "گل گهر: ۴,۳۰۰,۰۰۰ | مرکزی: ۴,۶۰۰,۰۰۰", "unit": "تن"},
-        "pellet": {"name": "گندله", "ice": "۶,۲۰۰,۰۰۰ - ۶,۸۰۰,۰۰۰", "free_market": "۶,۸۰۰,۰۰۰ - ۷,۵۰۰,۰۰۰", "factory": "گل گهر: ۶,۴۰۰,۰۰۰ | چادرملو: ۶,۳۰۰,۰۰۰", "unit": "تن"},
-        "dri": {"name": "آهن اسفنجی", "ice": f"{int(dri*0.95):,} - {int(dri*1.02):,}", "free_market": f"{int(dri*0.98):,} - {int(dri*1.05):,}", "factory": f"میانگین: {int(dri):,}", "unit": "کیلو"},
-        "billet": {"name": "شمش فولادی", "ice": f"{int(billet*0.95):,} - {int(billet*1.02):,}", "free_market": f"{int(billet*0.98):,} - {int(billet*1.05):,}", "factory": f"اصفهان: {billet:,} | یزد: {billet-500:,} | قزوین: {billet-1500:,}", "unit": "کیلو"},
-        "rebar": {"name": "میلگرد", "ice": f"{int(rebar*0.95):,} - {int(rebar*1.02):,}", "free_market": f"{int(rebar*0.98):,} - {int(rebar*1.05):,}", "factory": f"ذوب آهن: {rebar:,} | امیرکبیر: {rebar+1000:,}", "unit": "کیلو"},
-        "ibeam": {"name": "تیرآهن", "ice": f"{int(ibeam*0.95):,} - {int(ibeam*1.02):,}", "free_market": f"{int(ibeam*0.98):,} - {int(ibeam*1.05):,}", "factory": f"ذوب آهن: {ibeam:,}", "unit": "کیلو"}
+        "concentrate": {
+            "name": "کنسانتره سنگ آهن",
+            "ice": "۴,۲۰۰,۰۰۰ - ۴,۸۰۰,۰۰۰",
+            "free_market": "۵,۴۰۰,۰۰۰ - ۵,۸۰۰,۰۰۰",
+            "factory": "گل گهر: ۴,۳۰۰,۰۰۰ | مرکزی: ۴,۶۰۰,۰۰۰",
+            "unit": "تن"
+        },
+        "pellet": {
+            "name": "گندله",
+            "ice": "۶,۲۰۰,۰۰۰ - ۶,۸۰۰,۰۰۰",
+            "free_market": "۶,۸۰۰,۰۰۰ - ۷,۵۰۰,۰۰۰",
+            "factory": "گل گهر: ۶,۴۰۰,۰۰۰ | چادرملو: ۶,۳۰۰,۰۰۰",
+            "unit": "تن"
+        },
+        "dri": {
+            "name": "آهن اسفنجی",
+            "ice": f"{int(dri*0.95):,} - {int(dri*1.02):,}",
+            "free_market": f"{int(dri*0.98):,} - {int(dri*1.05):,}",
+            "factory": f"میانگین: {int(dri):,}",
+            "unit": "کیلو"
+        },
+        "billet": {
+            "name": "شمش فولادی",
+            "ice": f"{int(billet*0.95):,} - {int(billet*1.02):,}",
+            "free_market": f"{int(billet*0.98):,} - {int(billet*1.05):,}",
+            "factory": f"اصفهان: {billet:,} | یزد: {billet-500:,} | قزوین: {billet-1500:,}",
+            "unit": "کیلو"
+        },
+        "rebar": {
+            "name": "میلگرد",
+            "ice": f"{int(rebar*0.95):,} - {int(rebar*1.02):,}",
+            "free_market": f"{int(rebar*0.98):,} - {int(rebar*1.05):,}",
+            "factory": f"ذوب آهن: {rebar:,} | امیرکبیر: {rebar+1000:,}",
+            "unit": "کیلو"
+        },
+        "ibeam": {
+            "name": "تیرآهن",
+            "ice": f"{int(ibeam*0.95):,} - {int(ibeam*1.02):,}",
+            "free_market": f"{int(ibeam*0.98):,} - {int(ibeam*1.05):,}",
+            "factory": f"ذوب آهن: {ibeam:,}",
+            "unit": "کیلو"
+        }
     }
     iran_prices_cache["data"] = prices
     iran_prices_cache["last_update"] = now
     return prices
 
+# ========== State های مکالمه ==========
 SELECT_PRODUCT, GET_PRICE, GET_RATE, GET_TONNAGE, GET_FREIGHT, GET_PORT = range(6)
 user_data = {}
 
-async def start(update: Update, context):
+# ========== منوی اصلی ==========
+async def start(update, context):
     keyboard = [
         [InlineKeyboardButton("📊 محاسبه سود", callback_data="start_profit")],
         [InlineKeyboardButton("💰 قیمت جهانی", callback_data="show_global")],
@@ -166,7 +220,7 @@ async def start(update: Update, context):
         parse_mode="Markdown"
     )
 
-async def back_to_main(update: Update, context):
+async def back_to_main(update, context):
     query = update.callback_query
     await query.answer()
     keyboard = [
@@ -188,30 +242,40 @@ async def back_to_main(update: Update, context):
     )
     return ConversationHandler.END
 
-async def show_global(update: Update, context):
+# ========== قیمت جهانی ==========
+async def show_global(update, context):
     query = update.callback_query
     await query.answer()
     text = "🌍 *قیمت‌های جهانی* 🌍\n\n"
     for p in GLOBAL_PRODUCTS:
+        fob_val = to_persian_digits("$" + str(p["fob"]))
+        north_val = to_persian_digits("$" + str(p["north"]))
+        south_val = to_persian_digits("$" + str(p["south"]))
         text += f"• *{p['name']}*\n"
-        text += f"   🇮🇷 FOB خلیج فارس: *{to_persian_digits(f"${p['fob']}")}*\n"
-        text += f"   🇨🇳 CFR شمال چین: *{to_persian_digits(f"${p['north']}")}*\n"
-        text += f"   🇨🇳 CFR جنوب چین: *{to_persian_digits(f"${p['south']}")}*\n\n"
-    text += f"🔄 بروزرسانی: {to_persian_digits(datetime.now().strftime('%H:%M - %Y/%m/%d'))}"
+        text += f"   🇮🇷 FOB خلیج فارس: *{fob_val}*\n"
+        text += f"   🇨🇳 CFR شمال چین: *{north_val}*\n"
+        text += f"   🇨🇳 CFR جنوب چین: *{south_val}*\n\n"
+    time_str = to_persian_digits(datetime.now().strftime('%H:%M - %Y/%m/%d'))
+    text += f"🔄 بروزرسانی: {time_str}"
     await query.edit_message_text(text, reply_markup=get_back_button("main"), parse_mode="Markdown")
 
-async def show_iran(update: Update, context):
+# ========== قیمت ایران ==========
+async def show_iran(update, context):
     query = update.callback_query
     await query.answer()
     iran = await get_iran_prices()
     nego = await get_usd_nego_rate_toman()
     free = await get_usd_free_rate_toman()
     last = iran_prices_cache.get("last_update")
-    upd_txt = to_persian_digits(last.strftime('%H:%M - %Y/%m/%d')) if last else "در حال دریافت..."
+    if last:
+        upd_txt = to_persian_digits(last.strftime('%H:%M - %Y/%m/%d'))
+    else:
+        upd_txt = "در حال دریافت..."
+    
     text = f"🇮🇷 *قیمت‌های داخلی ایران* 🇮🇷\n🔄 {upd_txt}\n\n"
     text += "💱 *نرخ ارز:*\n"
-    text += f"   • دلار مبادله‌ای (نیمایی): *{to_persian_digits(f'{nego:,}')}* تومان\n"
-    text += f"   • دلار بازار آزاد: *{to_persian_digits(f'{free:,}')}* تومان\n\n"
+    text += f"   • دلار مبادله‌ای (نیمایی): *{to_persian_digits(str(nego) + ',')}* تومان\n"
+    text += f"   • دلار بازار آزاد: *{to_persian_digits(str(free) + ',')}* تومان\n\n"
     text += "🏭 *بورس کالا (ICE) - تومان:*\n"
     for k, v in iran.items():
         text += f"   • {v['name']}: *{to_persian_digits(v['ice'])}* تومان/{v['unit']}\n"
@@ -226,7 +290,8 @@ async def show_iran(update: Update, context):
     text += "\n📌 منابع: بورس کالا، آهن ملل، نوبیتکس، TGJU"
     await query.edit_message_text(text, reply_markup=get_back_button("main"), parse_mode="Markdown")
 
-async def start_profit(update: Update, context):
+# ========== محاسبه سود ==========
+async def start_profit(update, context):
     query = update.callback_query
     await query.answer()
     user_data[query.from_user.id] = {}
@@ -244,7 +309,7 @@ async def start_profit(update: Update, context):
     )
     return SELECT_PRODUCT
 
-async def product_selected(update: Update, context):
+async def product_selected(update, context):
     query = update.callback_query
     await query.answer()
     prod_map = {
@@ -265,7 +330,7 @@ async def product_selected(update: Update, context):
     )
     return GET_PRICE
 
-async def get_price(update: Update, context):
+async def get_price(update, context):
     uid = update.effective_user.id
     try:
         raw = update.message.text.replace(',', '').replace('،', '').strip()
@@ -273,18 +338,15 @@ async def get_price(update: Update, context):
         user_data[uid]["purchase"] = price
         nego = await get_usd_nego_rate_toman()
         free = await get_usd_free_rate_toman()
-        await update.message.reply_text(
-            f"💱 *نرخ دلار (تومان):*\n   • مبادله‌ای: {to_persian_digits(f'{nego:,}')}\n   • بازار آزاد: {to_persian_digits(f'{free:,}')}\n\n"
-            "۰ = نرخ مبادله‌ای\n۱ = نرخ بازار آزاد\nیا عدد دلخواه را وارد کنید:",
-            reply_markup=get_back_button("rate"),
-            parse_mode="Markdown"
-        )
+        msg = f"💱 *نرخ دلار (تومان):*\n   • مبادله‌ای: {to_persian_digits(str(nego))}\n   • بازار آزاد: {to_persian_digits(str(free))}\n\n"
+        msg += "۰ = نرخ مبادله‌ای\n۱ = نرخ بازار آزاد\nیا عدد دلخواه را وارد کنید:"
+        await update.message.reply_text(msg, reply_markup=get_back_button("rate"), parse_mode="Markdown")
         return GET_RATE
     except:
         await update.message.reply_text("❌ عدد معتبر وارد کنید (مثال: ۹۵):", reply_markup=get_back_button("price"))
         return GET_PRICE
 
-async def get_rate(update: Update, context):
+async def get_rate(update, context):
     uid = update.effective_user.id
     try:
         val = float(update.message.text.replace(',', '').replace('،', '').strip())
@@ -297,17 +359,14 @@ async def get_rate(update: Update, context):
         else:
             user_data[uid]["rate"] = int(val)
         rate_val = user_data[uid]["rate"]
-        await update.message.reply_text(
-            f"✅ نرخ ارز: {to_persian_digits(f'{rate_val:,}')} تومان\n\n⚖️ *تناژ* (تن) را وارد کنید:\n(مثال: ۵۰۰۰)",
-            reply_markup=get_back_button("tonnage"),
-            parse_mode="Markdown"
-        )
+        msg = f"✅ نرخ ارز: {to_persian_digits(str(rate_val))} تومان\n\n⚖️ *تناژ* (تن) را وارد کنید:\n(مثال: ۵۰۰۰)"
+        await update.message.reply_text(msg, reply_markup=get_back_button("tonnage"), parse_mode="Markdown")
         return GET_TONNAGE
     except:
         await update.message.reply_text("❌ عدد معتبر وارد کنید:", reply_markup=get_back_button("rate"))
         return GET_RATE
 
-async def get_tonnage(update: Update, context):
+async def get_tonnage(update, context):
     uid = update.effective_user.id
     try:
         raw = update.message.text.replace(',', '').replace('،', '').strip()
@@ -322,7 +381,7 @@ async def get_tonnage(update: Update, context):
         await update.message.reply_text("❌ عدد معتبر وارد کنید:", reply_markup=get_back_button("tonnage"))
         return GET_TONNAGE
 
-async def get_freight(update: Update, context):
+async def get_freight(update, context):
     uid = update.effective_user.id
     try:
         raw = update.message.text.replace(',', '').replace('،', '').strip()
@@ -337,7 +396,7 @@ async def get_freight(update: Update, context):
         await update.message.reply_text("❌ عدد معتبر وارد کنید:", reply_markup=get_back_button("freight"))
         return GET_FREIGHT
 
-async def get_port(update: Update, context):
+async def get_port(update, context):
     uid = update.effective_user.id
     try:
         raw = update.message.text.replace(',', '').replace('،', '').strip()
@@ -353,15 +412,24 @@ async def get_port(update: Update, context):
         total_cost = (purchase + freight + port_cost) * t
         profit_usd = revenue - total_cost
         profit_toman = profit_usd * rate
-        result = (
-            f"📊 *نتیجه محاسبه سود*\n📅 {datetime.now().strftime('%Y/%m/%d - %H:%M')}\n{'─' * 30}\n"
-            f"📦 محصول: {d['product']}\n⚖️ تناژ: {to_persian_digits(f'{t:,.0f}')} تن\n"
-            f"💰 قیمت خرید: {to_persian_digits(f'${purchase:,.0f}')}/تن\n"
-            f"💵 قیمت فروش (FOB ۲۰٪): {to_persian_digits(f'${fob:,.0f}')}/تن\n{'─' * 30}\n"
-            f"🚢 حمل: {to_persian_digits(f'${freight:,.0f}')}/تن\n⚓ پورت: {to_persian_digits(f'${port_cost:,.0f}')}/تن\n{'─' * 30}\n"
-            f"✅ *سود خالص:*\n🇺🇸 دلار: {to_persian_digits(f'${profit_usd:,.0f}')}\n🇮🇷 تومان: {to_persian_digits(f'{profit_toman:,.0f}')} تومان\n{'─' * 30}\n"
-            f"💱 نرخ ارز: {to_persian_digits(f'{rate:,}')} تومان"
-        )
+        
+        result = "📊 *نتیجه محاسبه سود*\n"
+        result += f"📅 {datetime.now().strftime('%Y/%m/%d - %H:%M')}\n"
+        result += "──────────────────────────────\n"
+        result += f"📦 محصول: {d['product']}\n"
+        result += f"⚖️ تناژ: {to_persian_digits(str(int(t)))} تن\n"
+        result += f"💰 قیمت خرید: {to_persian_digits('$' + str(int(purchase)))}/تن\n"
+        result += f"💵 قیمت فروش (FOB ۲۰٪): {to_persian_digits('$' + str(int(fob)))}/تن\n"
+        result += "──────────────────────────────\n"
+        result += f"🚢 حمل: {to_persian_digits('$' + str(int(freight)))}/تن\n"
+        result += f"⚓ پورت: {to_persian_digits('$' + str(int(port_cost)))}/تن\n"
+        result += "──────────────────────────────\n"
+        result += f"✅ *سود خالص:*\n"
+        result += f"🇺🇸 دلار: {to_persian_digits('$' + str(int(profit_usd)))}\n"
+        result += f"🇮🇷 تومان: {to_persian_digits(str(int(profit_toman)))} تومان\n"
+        result += "──────────────────────────────\n"
+        result += f"💱 نرخ ارز: {to_persian_digits(str(rate))} تومان"
+        
         await update.message.reply_text(result, reply_markup=get_back_button("main"), parse_mode="Markdown")
         del user_data[uid]
         return ConversationHandler.END
@@ -369,13 +437,14 @@ async def get_port(update: Update, context):
         await update.message.reply_text("❌ خطا: لطفاً یک عدد معتبر وارد کنید.", reply_markup=get_back_button("port"))
         return GET_PORT
 
-async def cancel(update: Update, context):
+async def cancel(update, context):
     uid = update.effective_user.id
     if uid in user_data:
         del user_data[uid]
     await update.message.reply_text("❌ عملیات لغو شد.", reply_markup=get_back_button("main"))
 
-async def back_to_product(update: Update, context):
+# ========== بازگشت ==========
+async def back_to_product(update, context):
     query = update.callback_query
     await query.answer()
     keyboard = [
@@ -392,7 +461,7 @@ async def back_to_product(update: Update, context):
     )
     return SELECT_PRODUCT
 
-async def back_to_price(update: Update, context):
+async def back_to_price(update, context):
     query = update.callback_query
     await query.answer()
     uid = query.from_user.id
@@ -406,20 +475,17 @@ async def back_to_price(update: Update, context):
     )
     return GET_PRICE
 
-async def back_to_rate(update: Update, context):
+async def back_to_rate(update, context):
     query = update.callback_query
     await query.answer()
     nego = await get_usd_nego_rate_toman()
     free = await get_usd_free_rate_toman()
-    await query.edit_message_text(
-        f"💱 *نرخ دلار (تومان):*\n   • مبادله‌ای: {to_persian_digits(f'{nego:,}')}\n   • بازار آزاد: {to_persian_digits(f'{free:,}')}\n\n"
-        "۰ = نرخ مبادله‌ای\n۱ = نرخ بازار آزاد\nیا عدد دلخواه:",
-        reply_markup=get_back_button("rate"),
-        parse_mode="Markdown"
-    )
+    msg = f"💱 *نرخ دلار (تومان):*\n   • مبادله‌ای: {to_persian_digits(str(nego))}\n   • بازار آزاد: {to_persian_digits(str(free))}\n\n"
+    msg += "۰ = نرخ مبادله‌ای\n۱ = نرخ بازار آزاد\nیا عدد دلخواه:"
+    await query.edit_message_text(msg, reply_markup=get_back_button("rate"), parse_mode="Markdown")
     return GET_RATE
 
-async def back_to_tonnage(update: Update, context):
+async def back_to_tonnage(update, context):
     query = update.callback_query
     await query.answer()
     await query.edit_message_text(
@@ -429,7 +495,7 @@ async def back_to_tonnage(update: Update, context):
     )
     return GET_TONNAGE
 
-async def back_to_freight(update: Update, context):
+async def back_to_freight(update, context):
     query = update.callback_query
     await query.answer()
     await query.edit_message_text(
@@ -439,7 +505,7 @@ async def back_to_freight(update: Update, context):
     )
     return GET_FREIGHT
 
-async def back_to_port(update: Update, context):
+async def back_to_port(update, context):
     query = update.callback_query
     await query.answer()
     await query.edit_message_text(
@@ -449,6 +515,7 @@ async def back_to_port(update: Update, context):
     )
     return GET_PORT
 
+# ========== اجرای اصلی ==========
 def main():
     token = os.environ.get("BOT_TOKEN")
     if not token:
