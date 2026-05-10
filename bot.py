@@ -1,4 +1,4 @@
-ort os
+import os
 import re
 import asyncio
 import logging
@@ -57,32 +57,6 @@ def get_back_button(step: str) -> InlineKeyboardMarkup:
         ])
     else:
         return InlineKeyboardMarkup([[InlineKeyboardButton("🏠 منوی اصلی", callback_data="back_to_main")]])
-        return InlineKeyboardMarkup([
-            [InlineKeyboardButton("🔙 بازگشت به انتخاب محصول", callback_data="back_to_product")],
-            [InlineKeyboardButton("🏠 منوی اصلی", callback_data="back_to_main")]
-        ])
-    elif step == "rate":
-        return InlineKeyboardMarkup([
-            [InlineKeyboardButton("🔙 بازگشت به قیمت خرید", callback_data="back_to_price")],
-            [InlineKeyboardButton("🏠 منوی اصلی", callback_data="back_to_main")]
-        ])
-    elif step == "tonnage":
-        return InlineKeyboardMarkup([
-            [InlineKeyboardButton("🔙 بازگشت به نرخ ارز", callback_data="back_to_rate")],
-            [InlineKeyboardButton("🏠 منوی اصلی", callback_data="back_to_main")]
-        ])
-    elif step == "freight":
-        return InlineKeyboardMarkup([
-            [InlineKeyboardButton("🔙 بازگشت به تناژ", callback_data="back_to_tonnage")],
-            [InlineKeyboardButton("🏠 منوی اصلی", callback_data="back_to_main")]
-        ])
-    elif step == "port":
-        return InlineKeyboardMarkup([
-            [InlineKeyboardButton("🔙 بازگشت به هزینه حمل", callback_data="back_to_freight")],
-            [InlineKeyboardButton("🏠 منوی اصلی", callback_data="back_to_main")]
-        ])
-    else:
-        return InlineKeyboardMarkup([[InlineKeyboardButton("🏠 منوی اصلی", callback_data="back_to_main")]])
 
 # ========== نرخ ارز ==========
 async def get_usd_nego_rate_toman() -> int:
@@ -94,8 +68,8 @@ async def get_usd_nego_rate_toman() -> int:
                     match = re.search(r'(\d{1,3}(?:,\d{3})*)\s*ریال', html)
                     if match:
                         return int(match.group(1).replace(',', '')) // 10
-    except Exception as e:
-        logger.error(f"Error fetching nego rate: {e}")
+    except:
+        pass
     return 146800
 
 async def get_usd_free_rate_toman() -> int:
@@ -108,21 +82,11 @@ async def get_usd_free_rate_toman() -> int:
                     price = int(price_str)
                     if price > 0:
                         return price // 10
-    except Exception as e:
-        logger.error(f"TGJU error: {e}")
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get("https://api.nobitex.ir/v2/trades", timeout=5) as resp:
-                if resp.status == 200:
-                    data = await resp.json()
-                    price = float(data.get("stats", {}).get("USDT-IRT", {}).get("latest", 0))
-                    if price > 0:
-                        return int(price) // 10
-    except Exception as e:
-        logger.error(f"Nobitex error: {e}")
+    except:
+        pass
     return 178000
 
-# ========== قیمت‌های جهانی (ثابت – قابل تغییر توسط شما) ==========
+# ========== قیمت‌های جهانی (ثابت) ==========
 GLOBAL_PRODUCTS = [
     {"name": "کنسانتره سنگ آهن", "fob": 85, "north": 130, "south": 131},
     {"name": "گندله", "fob": 105, "north": 155, "south": 156},
@@ -131,7 +95,7 @@ GLOBAL_PRODUCTS = [
     {"name": "میلگرد", "fob": 550, "north": 600, "south": 595},
 ]
 
-# ========== قیمت‌های داخلی ایران (اسکرپینگ آهن‌ملل) ==========
+# ========== قیمت‌های داخلی ایران ==========
 iran_prices_cache = {"data": None, "last_update": None}
 
 async def fetch_ahanmelal_price(product_key: str):
@@ -143,15 +107,14 @@ async def fetch_ahanmelal_price(product_key: str):
     }
     if product_key not in urls:
         return None
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+    headers = {"User-Agent": "Mozilla/5.0"}
     try:
         async with aiohttp.ClientSession() as session:
             async with session.get(urls[product_key], headers=headers, timeout=15) as resp:
                 if resp.status == 200:
                     html = await resp.text()
                     soup = BeautifulSoup(html, 'html.parser')
-                    selectors = ['.product-price', '.price', '.current-price', '.price-value', '.offer-price']
-                    for sel in selectors:
+                    for sel in ['.product-price', '.price', '.current-price']:
                         elem = soup.select_one(sel)
                         if elem:
                             txt = elem.get_text(strip=True)
@@ -160,8 +123,8 @@ async def fetch_ahanmelal_price(product_key: str):
                                 raw = nums[0].replace(',', '')
                                 if raw.isdigit():
                                     return int(raw)
-    except Exception as e:
-        logger.error(f"Scrape {product_key} error: {e}")
+    except:
+        pass
     return None
 
 async def get_iran_prices():
@@ -171,55 +134,18 @@ async def get_iran_prices():
         if (now - iran_prices_cache["last_update"]).total_seconds() < 21600:
             return iran_prices_cache["data"]
 
-    logger.info("Fetching Iran prices...")
     billet = await fetch_ahanmelal_price("billet") or 55000
     rebar = await fetch_ahanmelal_price("rebar") or 65000
     ibeam = await fetch_ahanmelal_price("ibeam") or 62000
     dri = await fetch_ahanmelal_price("dri") or 15500
 
     prices = {
-        "concentrate": {
-            "name": "کنسانتره سنگ آهن",
-            "ice": "۴,۲۰۰,۰۰۰ - ۴,۸۰۰,۰۰۰",
-            "free_market": "۵,۴۰۰,۰۰۰ - ۵,۸۰۰,۰۰۰",
-            "factory": "گل گهر: ۴,۳۰۰,۰۰۰ | مرکزی: ۴,۶۰۰,۰۰۰",
-            "unit": "تن"
-        },
-        "pellet": {
-            "name": "گندله",
-            "ice": "۶,۲۰۰,۰۰۰ - ۶,۸۰۰,۰۰۰",
-            "free_market": "۶,۸۰۰,۰۰۰ - ۷,۵۰۰,۰۰۰",
-            "factory": "گل گهر: ۶,۴۰۰,۰۰۰ | چادرملو: ۶,۳۰۰,۰۰۰",
-            "unit": "تن"
-        },
-        "dri": {
-            "name": "آهن اسفنجی",
-            "ice": f"{int(dri*0.95):,} - {int(dri*1.02):,}",
-            "free_market": f"{int(dri*0.98):,} - {int(dri*1.05):,}",
-            "factory": f"میانگین: {int(dri):,}",
-            "unit": "کیلو"
-        },
-        "billet": {
-            "name": "شمش فولادی",
-            "ice": f"{int(billet*0.95):,} - {int(billet*1.02):,}",
-            "free_market": f"{int(billet*0.98):,} - {int(billet*1.05):,}",
-            "factory": f"اصفهان: {billet:,} | یزد: {billet-500:,} | قزوین: {billet-1500:,}",
-            "unit": "کیلو"
-        },
-        "rebar": {
-            "name": "میلگرد",
-            "ice": f"{int(rebar*0.95):,} - {int(rebar*1.02):,}",
-            "free_market": f"{int(rebar*0.98):,} - {int(rebar*1.05):,}",
-            "factory": f"ذوب آهن: {rebar:,} | امیرکبیر: {rebar+1000:,}",
-            "unit": "کیلو"
-        },
-        "ibeam": {
-            "name": "تیرآهن",
-            "ice": f"{int(ibeam*0.95):,} - {int(ibeam*1.02):,}",
-            "free_market": f"{int(ibeam*0.98):,} - {int(ibeam*1.05):,}",
-            "factory": f"ذوب آهن: {ibeam:,}",
-            "unit": "کیلو"
-        }
+        "concentrate": {"name": "کنسانتره سنگ آهن", "ice": "۴,۲۰۰,۰۰۰ - ۴,۸۰۰,۰۰۰", "free_market": "۵,۴۰۰,۰۰۰ - ۵,۸۰۰,۰۰۰", "factory": "گل گهر: ۴,۳۰۰,۰۰۰ | مرکزی: ۴,۶۰۰,۰۰۰", "unit": "تن"},
+        "pellet": {"name": "گندله", "ice": "۶,۲۰۰,۰۰۰ - ۶,۸۰۰,۰۰۰", "free_market": "۶,۸۰۰,۰۰۰ - ۷,۵۰۰,۰۰۰", "factory": "گل گهر: ۶,۴۰۰,۰۰۰ | چادرملو: ۶,۳۰۰,۰۰۰", "unit": "تن"},
+        "dri": {"name": "آهن اسفنجی", "ice": f"{int(dri*0.95):,} - {int(dri*1.02):,}", "free_market": f"{int(dri*0.98):,} - {int(dri*1.05):,}", "factory": f"میانگین: {int(dri):,}", "unit": "کیلو"},
+        "billet": {"name": "شمش فولادی", "ice": f"{int(billet*0.95):,} - {int(billet*1.02):,}", "free_market": f"{int(billet*0.98):,} - {int(billet*1.05):,}", "factory": f"اصفهان: {billet:,} | یزد: {billet-500:,} | قزوین: {billet-1500:,}", "unit": "کیلو"},
+        "rebar": {"name": "میلگرد", "ice": f"{int(rebar*0.95):,} - {int(rebar*1.02):,}", "free_market": f"{int(rebar*0.98):,} - {int(rebar*1.05):,}", "factory": f"ذوب آهن: {rebar:,} | امیرکبیر: {rebar+1000:,}", "unit": "کیلو"},
+        "ibeam": {"name": "تیرآهن", "ice": f"{int(ibeam*0.95):,} - {int(ibeam*1.02):,}", "free_market": f"{int(ibeam*0.98):,} - {int(ibeam*1.05):,}", "factory": f"ذوب آهن: {ibeam:,}", "unit": "کیلو"}
     }
     iran_prices_cache["data"] = prices
     iran_prices_cache["last_update"] = now
@@ -229,7 +155,7 @@ async def get_iran_prices():
 SELECT_PRODUCT, GET_PRICE, GET_RATE, GET_TONNAGE, GET_FREIGHT, GET_PORT = range(6)
 user_data = {}
 
-# ========== هندلرهای منوی اصلی ==========
+# ========== منوی اصلی ==========
 async def start(update: Update, context):
     keyboard = [
         [InlineKeyboardButton("📊 محاسبه سود", callback_data="start_profit")],
@@ -378,29 +304,25 @@ async def get_rate(update: Update, context):
         free = await get_usd_free_rate_toman()
         if val == 0:
             user_data[uid]["rate"] = nego
-            rate_type = "مبادله‌ای"
         elif val == 1:
             user_data[uid]["rate"] = free
-            rate_type = "بازار آزاد"
         else:
             user_data[uid]["rate"] = int(val)
-            rate_type = "دلخواه"
         await update.message.reply_text(
-            f"✅ نرخ ارز *{rate_type}*: {to_persian_digits(f'{user_data[uid]["rate"]:,}')} تومان\n\n⚖️ *تناژ* (تن) را وارد کنید:\n(مثال: ۵۰۰۰)",
+            f"✅ نرخ ارز: {to_persian_digits(f'{user_data[uid]["rate"]:,}')} تومان\n\n⚖️ *تناژ* (تن) را وارد کنید:\n(مثال: ۵۰۰۰)",
             reply_markup=get_back_button("tonnage"),
             parse_mode="Markdown"
         )
         return GET_TONNAGE
     except:
-        await update.message.reply_text("❌ عدد معتبر وارد کنید (۰, ۱ یا عدد دلخواه):", reply_markup=get_back_button("rate"))
+        await update.message.reply_text("❌ عدد معتبر وارد کنید:", reply_markup=get_back_button("rate"))
         return GET_RATE
 
 async def get_tonnage(update: Update, context):
     uid = update.effective_user.id
     try:
         raw = update.message.text.replace(',', '').replace('،', '').strip()
-        ton = float(raw)
-        user_data[uid]["tonnage"] = ton
+        user_data[uid]["tonnage"] = float(raw)
         await update.message.reply_text(
             "🚢 *هزینه حمل* هر تن به دلار را وارد کنید:\n(مثال: ۱۸)",
             reply_markup=get_back_button("freight"),
@@ -408,15 +330,14 @@ async def get_tonnage(update: Update, context):
         )
         return GET_FREIGHT
     except:
-        await update.message.reply_text("❌ عدد معتبر وارد کنید (مثال: ۵۰۰۰):", reply_markup=get_back_button("tonnage"))
+        await update.message.reply_text("❌ عدد معتبر وارد کنید:", reply_markup=get_back_button("tonnage"))
         return GET_TONNAGE
 
 async def get_freight(update: Update, context):
     uid = update.effective_user.id
     try:
         raw = update.message.text.replace(',', '').replace('،', '').strip()
-        freight = float(raw)
-        user_data[uid]["freight"] = freight
+        user_data[uid]["freight"] = float(raw)
         await update.message.reply_text(
             "⚓ *هزینه بارگیری در پورت* هر تن به دلار را وارد کنید:\n(مثال: ۴)",
             reply_markup=get_back_button("port"),
@@ -424,15 +345,14 @@ async def get_freight(update: Update, context):
         )
         return GET_PORT
     except:
-        await update.message.reply_text("❌ عدد معتبر وارد کنید (مثال: ۱۸):", reply_markup=get_back_button("freight"))
+        await update.message.reply_text("❌ عدد معتبر وارد کنید:", reply_markup=get_back_button("freight"))
         return GET_FREIGHT
 
 async def get_port(update: Update, context):
     uid = update.effective_user.id
     try:
         raw = update.message.text.replace(',', '').replace('،', '').strip()
-        port = float(raw)
-        user_data[uid]["port"] = port
+        user_data[uid]["port"] = float(raw)
         d = user_data[uid]
         t = d["tonnage"]
         purchase = d["purchase"]
@@ -444,7 +364,6 @@ async def get_port(update: Update, context):
         total_cost = (purchase + freight + port_cost) * t
         profit_usd = revenue - total_cost
         profit_toman = profit_usd * rate
-
         result = (
             f"📊 *نتیجه محاسبه سود*\n📅 {datetime.now().strftime('%Y/%m/%d - %H:%M')}\n{'─' * 30}\n"
             f"📦 محصول: {d['product']}\n⚖️ تناژ: {to_persian_digits(f'{t:,.0f}')} تن\n"
@@ -458,7 +377,6 @@ async def get_port(update: Update, context):
         del user_data[uid]
         return ConversationHandler.END
     except Exception as e:
-        logger.error(f"get_port error: {e}")
         await update.message.reply_text("❌ خطا: لطفاً یک عدد معتبر وارد کنید.", reply_markup=get_back_button("port"))
         return GET_PORT
 
@@ -468,7 +386,7 @@ async def cancel(update: Update, context):
         del user_data[uid]
     await update.message.reply_text("❌ عملیات لغو شد.", reply_markup=get_back_button("main"))
 
-# ========== هندلرهای بازگشت ==========
+# ========== بازگشت ==========
 async def back_to_product(update: Update, context):
     query = update.callback_query
     await query.answer()
@@ -552,7 +470,7 @@ def main():
 
     app = Application.builder().token(token).build()
 
-    # هندلرهای بازگشت
+    app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(back_to_main, pattern="^back_to_main$"))
     app.add_handler(CallbackQueryHandler(back_to_product, pattern="^back_to_product$"))
     app.add_handler(CallbackQueryHandler(back_to_price, pattern="^back_to_price$"))
@@ -560,13 +478,10 @@ def main():
     app.add_handler(CallbackQueryHandler(back_to_tonnage, pattern="^back_to_tonnage$"))
     app.add_handler(CallbackQueryHandler(back_to_freight, pattern="^back_to_freight$"))
     app.add_handler(CallbackQueryHandler(back_to_port, pattern="^back_to_port$"))
-
-    # هندلرهای منو
     app.add_handler(CallbackQueryHandler(show_global, pattern="^show_global$"))
     app.add_handler(CallbackQueryHandler(show_iran, pattern="^show_iran$"))
     app.add_handler(CallbackQueryHandler(start_profit, pattern="^start_profit$"))
 
-    # مکالمه محاسبه سود
     conv_handler = ConversationHandler(
         entry_points=[CallbackQueryHandler(start_profit, pattern="^start_profit$")],
         states={
@@ -580,13 +495,12 @@ def main():
         fallbacks=[CommandHandler("cancel", cancel), CallbackQueryHandler(back_to_main, pattern="^back_to_main$")],
     )
     app.add_handler(conv_handler)
-    app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("cancel", cancel))
 
     async def post_init(_):
         await get_iran_prices()
-
     app.post_init = post_init
+
     logger.info("🤖 ربات روشن شد!")
     app.run_polling()
 
