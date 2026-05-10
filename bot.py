@@ -2,11 +2,15 @@ import os
 import logging
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler
+from price_updater import load_prices, start_updater
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 TOKEN = os.environ.get("BOT_TOKEN")
+
+# شروع بروزرسانی خودکار در پس‌زمینه
+start_updater()
 
 # ========== منوی اصلی ==========
 async def start(update: Update, context):
@@ -34,6 +38,7 @@ def get_back_button():
     keyboard = [[InlineKeyboardButton("🏠 بازگشت به منوی اصلی", callback_data="back")]]
     return InlineKeyboardMarkup(keyboard)
 
+# ========== قیمت جهانی ==========
 async def world_price(update: Update, context):
     query = update.callback_query
     await query.answer()
@@ -61,6 +66,7 @@ async def world_price(update: Update, context):
     text += "\n📌 منابع: Platts, Fastmarkets, SMM"
     await query.edit_message_text(text, reply_markup=get_back_button(), parse_mode="Markdown")
 
+# ========== بورس کالا ==========
 async def ice_price(update: Update, context):
     query = update.callback_query
     await query.answer()
@@ -85,6 +91,7 @@ async def ice_price(update: Update, context):
     text += "📌 منبع: بورس کالای ایران (IME)"
     await query.edit_message_text(text, reply_markup=get_back_button(), parse_mode="Markdown")
 
+# ========== بازار آزاد ==========
 async def free_market_price(update: Update, context):
     query = update.callback_query
     await query.answer()
@@ -109,6 +116,7 @@ async def free_market_price(update: Update, context):
     text += "📌 منابع: آهن ملل، آهن آنلاین، شاهراهان"
     await query.edit_message_text(text, reply_markup=get_back_button(), parse_mode="Markdown")
 
+# ========== قیمت کارخانه ==========
 async def factory_price(update: Update, context):
     query = update.callback_query
     await query.answer()
@@ -137,28 +145,30 @@ async def factory_price(update: Update, context):
     text += "📌 منابع: شاهراهان، آهن ملل"
     await query.edit_message_text(text, reply_markup=get_back_button(), parse_mode="Markdown")
 
+# ========== نرخ ارز (با بروزرسانی خودکار) ==========
 async def rate(update: Update, context):
     query = update.callback_query
     await query.answer()
+    
+    prices = load_prices()
+    free = prices.get("usd_free", 178000)
+    secondary = prices.get("usd_secondary", 28500)
+    
     text = "💱 *نرخ ارز بازار ایران* 💱\n"
     text += "-" * 35 + "\n\n"
     text += "🏦 *نرخ مبادله‌ای (نیمایی) - سامانه سنا*\n"
-    text += "   • دلار آمریکا: *۲۸,۵۰۰* تومان\n"
-    text += "   • یورو: *۳۱,۰۰۰* تومان\n"
-    text += "   • درهم امارات: *۷,۷۵۰* تومان\n"
-    text += "   • یوان چین: *۳,۹۵۰* تومان\n\n"
+    text += f"   • دلار آمریکا: *{secondary:,}* تومان\n\n"
     text += "🔄 *نرخ بازار آزاد*\n"
-    text += "   • دلار آمریکا: *۱۷۸,۰۰۰* تومان\n"
-    text += "   • یورو: *۱۹۲,۰۰۰* تومان\n"
-    text += "   • درهم امارات: *۴۸,۵۰۰* تومان\n"
-    text += "   • یوان چین: *۲۴,۵۰۰* تومان\n"
+    text += f"   • دلار آمریکا: *{free:,}* تومان\n"
     text += "\n" + "-" * 35 + "\n"
     text += "📌 منابع:\n"
     text += "   • نرخ مبادله‌ای: بانک مرکزی (سامانه سنا)\n"
     text += "   • نرخ آزاد: نوبیتکس، TGJU\n"
-    text += "🔄 بروزرسانی: لحظه‌ای"
+    text += "🔄 بروزرسانی: هر ۱۵ دقیقه"
+    
     await query.edit_message_text(text, reply_markup=get_back_button(), parse_mode="Markdown")
 
+# ========== بازگشت به منو ==========
 async def back_to_menu(update: Update, context):
     query = update.callback_query
     await query.answer()
@@ -177,11 +187,12 @@ async def back_to_menu(update: Update, context):
         "• آهن اسفنجی\n"
         "• شمش فولادی\n"
         "• میلگرد\n\n"
-        "لطفاً یکی از گزینه‌ها را選択 کنید:",
+        "لطفاً یکی از گزینه‌ها را انتخاب کنید:",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="Markdown"
     )
 
+# ========== اجرای اصلی ==========
 def main():
     if not TOKEN:
         logger.error("BOT_TOKEN not found!")
