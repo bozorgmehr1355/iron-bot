@@ -25,7 +25,7 @@ def to_persian_digits(text: str) -> str:
         '0': '۰', '1': '۱', '2': '۲', '3': '۳', '4': '۴',
         '5': '۵', '6': '۶', '7': '۷', '8': '۸', '9': '۹'
     }
-    return ''.join(persian_digits.get(ch, ch) for ch in text)
+    return ''.join(persian_digits.get(ch, ch) for ch in str(text))
 
 def get_back_button(step: str) -> InlineKeyboardMarkup:
     if step == "main":
@@ -86,7 +86,7 @@ async def get_usd_free_rate_toman() -> int:
         pass
     return 178000
 
-# ========== قیمت‌های جهانی (ثابت) ==========
+# ========== قیمت‌های جهانی ==========
 GLOBAL_PRODUCTS = [
     {"name": "کنسانتره سنگ آهن", "fob": 85, "north": 130, "south": 131},
     {"name": "گندله", "fob": 105, "north": 155, "south": 156},
@@ -203,11 +203,15 @@ async def show_global(update: Update, context):
     await query.answer()
     text = "🌍 *قیمت‌های جهانی* 🌍\n\n"
     for p in GLOBAL_PRODUCTS:
+        fob_str = to_persian_digits(f"${p['fob']}")
+        north_str = to_persian_digits(f"${p['north']}")
+        south_str = to_persian_digits(f"${p['south']}")
         text += f"• *{p['name']}*\n"
-        text += f"   🇮🇷 FOB خلیج فارس: *{to_persian_digits(f'${p["fob"]}')}*\n"
-        text += f"   🇨🇳 CFR شمال چین: *{to_persian_digits(f'${p["north"]}')}*\n"
-        text += f"   🇨🇳 CFR جنوب چین: *{to_persian_digits(f'${p["south"]}')}*\n\n"
-    text += f"🔄 بروزرسانی: {to_persian_digits(datetime.now().strftime('%H:%M - %Y/%m/%d'))}"
+        text += f"   🇮🇷 FOB خلیج فارس: *{fob_str}*\n"
+        text += f"   🇨🇳 CFR شمال چین: *{north_str}*\n"
+        text += f"   🇨🇳 CFR جنوب چین: *{south_str}*\n\n"
+    time_str = to_persian_digits(datetime.now().strftime('%H:%M - %Y/%m/%d'))
+    text += f"🔄 بروزرسانی: {time_str}"
     await query.edit_message_text(text, reply_markup=get_back_button("main"), parse_mode="Markdown")
 
 # ========== قیمت ایران ==========
@@ -218,8 +222,12 @@ async def show_iran(update: Update, context):
     nego = await get_usd_nego_rate_toman()
     free = await get_usd_free_rate_toman()
     last = iran_prices_cache.get("last_update")
-    upd_txt = f"🔄 {last.strftime('%H:%M - %Y/%m/%d')}" if last else "🔄 در حال دریافت..."
-    text = f"🇮🇷 *قیمت‌های داخلی ایران* 🇮🇷\n{to_persian_digits(upd_txt)}\n\n"
+    if last:
+        upd_txt = to_persian_digits(last.strftime('%H:%M - %Y/%m/%d'))
+    else:
+        upd_txt = "در حال دریافت..."
+    
+    text = f"🇮🇷 *قیمت‌های داخلی ایران* 🇮🇷\n🔄 {upd_txt}\n\n"
     text += "💱 *نرخ ارز:*\n"
     text += f"   • دلار مبادله‌ای (نیمایی): *{to_persian_digits(f'{nego:,}')}* تومان\n"
     text += f"   • دلار بازار آزاد: *{to_persian_digits(f'{free:,}')}* تومان\n\n"
@@ -364,6 +372,7 @@ async def get_port(update: Update, context):
         total_cost = (purchase + freight + port_cost) * t
         profit_usd = revenue - total_cost
         profit_toman = profit_usd * rate
+        
         result = (
             f"📊 *نتیجه محاسبه سود*\n📅 {datetime.now().strftime('%Y/%m/%d - %H:%M')}\n{'─' * 30}\n"
             f"📦 محصول: {d['product']}\n⚖️ تناژ: {to_persian_digits(f'{t:,.0f}')} تن\n"
