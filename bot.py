@@ -10,7 +10,10 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler
 
 TOKEN = os.environ.get("BOT_TOKEN")
 RATE_FILE = "rates.json"
-PRICE_FILE = "prices.json"
+
+# ========== قیمت‌های معتبر شمش (دستی) ==========
+# قیمت واقعی شمش در بازار ایران (تومان/تن)
+BILLET_PRICE = 42500  # میانگین ۴۲,۵۰۰ تومان/تن
 
 # ========== بروزرسانی نرخ ارز ==========
 def update_rates():
@@ -37,44 +40,7 @@ def start_rate_updater():
             update_rates()
     threading.Thread(target=loop, daemon=True).start()
 
-# ========== بروزرسانی قیمت شمش ==========
-def update_billet_price():
-    try:
-        headers = {"User-Agent": "Mozilla/5.0"}
-        r = requests.get("https://ahanmelal.com/steel-ingots/steel-ingot-price", headers=headers, timeout=10)
-        if r.status_code == 200:
-            numbers = re.findall(r'(\d{1,3}(?:,\d{3})*)', r.text)
-            if numbers:
-                return int(numbers[0].replace(',', ''))
-    except:
-        pass
-    return None
-
-def start_price_updater():
-    def loop():
-        while True:
-            time.sleep(6 * 60 * 60)
-            billet = update_billet_price()
-            if billet:
-                with open(PRICE_FILE, 'w') as f:
-                    json.dump({"billet": billet}, f)
-    threading.Thread(target=loop, daemon=True).start()
-    # بروزرسانی اولیه
-    billet = update_billet_price()
-    if billet:
-        with open(PRICE_FILE, 'w') as f:
-            json.dump({"billet": billet}, f)
-
-def load_billet():
-    try:
-        with open(PRICE_FILE, 'r') as f:
-            data = json.load(f)
-            return data.get("billet")
-    except:
-        return None
-
 start_rate_updater()
-start_price_updater()
 
 # ========== منوی اصلی ==========
 async def start(update, context):
@@ -101,7 +67,7 @@ async def start(update, context):
 def back_button():
     return InlineKeyboardMarkup([[InlineKeyboardButton("🏠 بازگشت به منو", callback_data="back")]])
 
-# ========== قیمت جهانی (کامل) ==========
+# ========== قیمت جهانی ==========
 async def world(update, context):
     await update.callback_query.answer()
     text = "🌍 *قیمت‌های جهانی* 🌍\n\n"
@@ -128,11 +94,9 @@ async def world(update, context):
     text += "\n📌 منابع: Platts, Fastmarkets, SMM"
     await update.callback_query.edit_message_text(text, reply_markup=back_button(), parse_mode="Markdown")
 
-# ========== بورس کالا (کامل) ==========
+# ========== بورس کالا ==========
 async def ice(update, context):
     await update.callback_query.answer()
-    billet = load_billet()
-    billet_text = f"{billet:,}" if billet else "۴۱,۰۰۰ - ۴۴,۰۰۰"
     text = "🏭 *قیمت بورس کالا (ICE)* 🏭\n"
     text += "━" * 35 + "\n\n"
     text += "🪨 *کنسانتره سنگ آهن*\n"
@@ -145,8 +109,8 @@ async def ice(update, context):
     text += "   قیمت پایه: ۱۴,۸۰۰ - ۱۵,۵۰۰ تومان/تن\n"
     text += "   آخرین معامله: ۱۵,۲۰۰ تومان/تن\n\n"
     text += "🔩 *شمش فولادی*\n"
-    text += f"   قیمت پایه: {billet_text} تومان/تن\n"
-    text += f"   آخرین معامله: {billet_text} تومان/تن\n\n"
+    text += f"   قیمت پایه: {BILLET_PRICE:,} تومان/تن\n"
+    text += f"   آخرین معامله: {BILLET_PRICE:,} تومان/تن\n\n"
     text += "📏 *میلگرد*\n"
     text += "   قیمت پایه: ۵۰,۰۰۰ - ۶۵,۰۰۰ تومان/کیلو\n"
     text += "   آخرین معامله: ۵۷,۵۰۰ تومان/کیلو\n"
@@ -154,14 +118,11 @@ async def ice(update, context):
     text += "📌 منبع: بورس کالای ایران (IME)"
     await update.callback_query.edit_message_text(text, reply_markup=back_button(), parse_mode="Markdown")
 
-# ========== بازار آزاد (کامل) ==========
+# ========== بازار آزاد ==========
 async def free(update, context):
     await update.callback_query.answer()
-    billet = load_billet()
-    if billet:
-        free_billet = f"{billet-2000:,} - {billet+2000:,}"
-    else:
-        free_billet = "۵۴,۰۰۰ - ۵۷,۰۰۰"
+    billet_min = BILLET_PRICE - 2000
+    billet_max = BILLET_PRICE + 2000
     text = "🔄 *قیمت بازار آزاد ایران* 🔄\n"
     text += "━" * 35 + "\n\n"
     text += "🪨 *کنسانتره سنگ آهن*\n"
@@ -174,8 +135,8 @@ async def free(update, context):
     text += "   محدوده قیمت: ۱۶,۰۰۰ - ۱۶,۸۰۰ تومان/تن\n"
     text += "   قیمت میانگین: ۱۶,۴۰۰ تومان/تن\n\n"
     text += "🔩 *شمش فولادی*\n"
-    text += f"   محدوده قیمت: {free_billet} تومان/تن\n"
-    text += f"   قیمت میانگین: {(billet if billet else 55500):,} تومان/تن\n\n"
+    text += f"   محدوده قیمت: {billet_min:,} - {billet_max:,} تومان/تن\n"
+    text += f"   قیمت میانگین: {BILLET_PRICE:,} تومان/تن\n\n"
     text += "📏 *میلگرد*\n"
     text += "   محدوده قیمت: ۶۳,۰۰۰ - ۶۸,۰۰۰ تومان/تن\n"
     text += "   قیمت میانگین: ۶۵,۵۰۰ تومان/تن\n"
@@ -183,18 +144,16 @@ async def free(update, context):
     text += "📌 منابع: آهن ملل، آهن آنلاین، شاهراهان"
     await update.callback_query.edit_message_text(text, reply_markup=back_button(), parse_mode="Markdown")
 
-# ========== قیمت کارخانه (کامل) ==========
+# ========== قیمت کارخانه ==========
 async def factory(update, context):
     await update.callback_query.answer()
-    billet = load_billet()
-    if billet:
-        factory_billet = f"اصفهان: {billet} | یزد: {billet-100} | قزوین: {billet-3000}"
-    else:
-        factory_billet = "اصفهان: ۴۳,۰۹۱ | یزد: ۴۳,۰۰۰ | قزوین: ۴۰,۴۰۹"
+    billet_min = BILLET_PRICE - 2000
     text = "🏭 *قیمت درب کارخانه* 🏭\n"
     text += "━" * 35 + "\n\n"
     text += "🔩 *شمش فولادی (تومان/تن)*\n"
-    text += f"   • {factory_billet}\n\n"
+    text += f"   • فولاد اصفهان: {BILLET_PRICE:,}\n"
+    text += f"   • فولاد یزد: {BILLET_PRICE-100:,}\n"
+    text += f"   • فولاد قزوین: {billet_min:,}\n\n"
     text += "📏 *میلگرد (تومان/کیلو)*\n"
     text += "   • ذوب آهن اصفهان: ۶۵,۰۰۰\n"
     text += "   • امیرکبیر کاشان: ۶۶,۰۰۰\n"
@@ -213,7 +172,7 @@ async def factory(update, context):
     text += "📌 منابع: شاهراهان، آهن ملل"
     await update.callback_query.edit_message_text(text, reply_markup=back_button(), parse_mode="Markdown")
 
-# ========== نرخ ارز (کامل) ==========
+# ========== نرخ ارز ==========
 async def rate(update, context):
     await update.callback_query.answer()
     with open(RATE_FILE, 'r') as f:
