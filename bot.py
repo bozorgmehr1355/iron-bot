@@ -9,7 +9,7 @@ from bs4 import BeautifulSoup  # ← اضافه شد
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler
 
-TOKEN = os.environ.get("8742538592:AAEeT1DCoMUZWoM7zS3tds-k5YAAAC_ADpU")
+TOKEN = os.environ.get("8742538592:AAEjPrIZoIe4DS3R1J46zrJ3FWHy7wC5-wM")
 METALPRICE_API_KEY = os.environ.get("e6de2613ce5902f03d502dff62d5f83c")  # کلید metalpriceapi.com
 
 RATE_FILE = "rates.json"
