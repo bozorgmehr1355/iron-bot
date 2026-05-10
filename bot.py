@@ -15,10 +15,11 @@ TOKEN = os.environ.get("BOT_TOKEN")
 
 async def start(update: Update, context):
     await update.message.reply_text(
-        "🤖 ربات قیمت آهن و فولاد\n\n"
+        "🤖 *ربات قیمت آهن و فولاد*\n\n"
         "📊 /world - قیمت جهانی\n"
         "🇮🇷 /iran - قیمت ایران\n"
-        "💱 /rate - نرخ ارز"
+        "💱 /rate - نرخ ارز",
+        parse_mode="Markdown"
     )
 
 async def world_price(update: Update, context):
@@ -37,6 +38,7 @@ async def iran_price(update: Update, context):
     rebar = get_iran_rebar_price()
     
     text = "🇮🇷 *قیمت‌های داخلی ایران* 🇮🇷\n\n"
+    
     if billet:
         text += f"🔩 شمش فولادی: *{to_persian_digits(billet)}* تومان/کیلو\n"
     else:
