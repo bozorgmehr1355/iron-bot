@@ -5,7 +5,7 @@ import re
 import time
 import threading
 import json
-from datetime import datetime  # <----- این خط را اضافه کن
+from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler
 
@@ -53,10 +53,10 @@ def start_rate_updater():
     threading.Thread(target=loop, daemon=True).start()
 
 # ========== بروزرسانی قیمت‌ها ==========
-def get_ahanmelal_price(url):
+def get_ahanmelal_price():
     try:
         headers = {"User-Agent": "Mozilla/5.0"}
-        r = requests.get(url, headers=headers, timeout=10)
+        r = requests.get("https://ahanmelal.com/steel-ingots/steel-ingot-price", headers=headers, timeout=10)
         if r.status_code == 200:
             numbers = re.findall(r'(\d{1,3}(?:,\d{3})*)', r.text)
             if numbers:
@@ -68,6 +68,10 @@ def get_ahanmelal_price(url):
 def update_all_prices():
     print(f"[{datetime.now()}] بروزرسانی قیمت‌ها...")
     
+    # دریافت قیمت شمش از آهن ملل
+    billet_price = get_ahanmelal_price()
+    
+    # قیمت‌های پایه
     prices = {
         "ice_concentrate": "۴,۲۰۰,۰۰۰ - ۴,۸۰۰,۰۰۰",
         "ice_pellet": "۶,۲۰۰,۰۰۰ - ۶,۸۰۰,۰۰۰",
@@ -86,7 +90,7 @@ def update_all_prices():
         "factory_concentrate": "گل گهر: ۴,۳۰۰,۰۰۰ | مرکزی: ۴,۶۰۰,۰۰۰"
     }
     
-    billet_price = get_ahanmelal_price("https://ahanmelal.com/steel-ingots/steel-ingot-price")
+    # اگر قیمت شمش از آهن ملل دریافت شد، بروزرسانی کن
     if billet_price:
         prices["free_billet"] = f"{billet_price-2000:,} - {billet_price+2000:,}"
         prices["factory_billet"] = f"اصفهان: {billet_price} | یزد: {billet_price-100} | قزوین: {billet_price-3000}"
