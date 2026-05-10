@@ -5,6 +5,7 @@ import re
 import time
 import threading
 import json
+from datetime import datetime  # <----- این خط را اضافه کن
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler
 
