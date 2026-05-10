@@ -17,6 +17,10 @@ def to_persian(num):
                '5': '۵', '6': '۶', '7': '۷', '8': '۸', '9': '۹'}
     return ''.join(persian.get(ch, ch) for ch in str(num))
 
+def format_number(num):
+    """فرمت عدد با کاما و سپس تبدیل به فارسی"""
+    return to_persian(f"{num:,}")
+
 # ========== بروزرسانی نرخ ارز ==========
 def update_rates():
     try:
@@ -43,12 +47,12 @@ def start_rate_updater():
 
 start_rate_updater()
 
-# ========== قیمت‌های پایه (واقعی) ==========
-CONCENTRATE_PRICE = 4800000   # کنسانتره: ۴,۸۰۰,۰۰۰ تومان/تن
-PELLET_PRICE = 6500000        # گندله: ۶,۵۰۰,۰۰۰ تومان/تن
-DRI_PRICE = 15500             # آهن اسفنجی: ۱۵,۵۰۰ تومان/تن
-BILLET_PRICE = 42500          # شمش: ۴۲,۵۰۰ تومان/تن
-REBAR_PRICE = 58000           # میلگرد: ۵۸,۰۰۰ تومان/تن
+# ========== قیمت‌های پایه ==========
+CONCENTRATE_PRICE = 4800000
+PELLET_PRICE = 6500000
+DRI_PRICE = 15500
+BILLET_PRICE = 42500
+REBAR_PRICE = 58000
 
 # ========== منوی اصلی ==========
 async def start(update, context):
@@ -106,11 +110,11 @@ async def ice(update, context):
     await update.callback_query.answer()
     text = "🏭 *قیمت بورس کالا (ICE)* 🏭\n"
     text += "━" * 35 + "\n\n"
-    text += f"🪨 کنسانتره سنگ آهن:\n   *{to_persian(CONCENTRATE_PRICE):,}* تومان/تن\n\n"
-    text += f"🟤 گندله:\n   *{to_persian(PELLET_PRICE):,}* تومان/تن\n\n"
-    text += f"🏭 آهن اسفنجی:\n   *{to_persian(DRI_PRICE):,}* تومان/تن\n\n"
-    text += f"🔩 شمش فولادی:\n   *{to_persian(BILLET_PRICE):,}* تومان/تن\n\n"
-    text += f"📏 میلگرد:\n   *{to_persian(REBAR_PRICE):,}* تومان/تن\n"
+    text += f"🪨 کنسانتره سنگ آهن:\n   *{format_number(CONCENTRATE_PRICE)}* تومان/تن\n\n"
+    text += f"🟤 گندله:\n   *{format_number(PELLET_PRICE)}* تومان/تن\n\n"
+    text += f"🏭 آهن اسفنجی:\n   *{format_number(DRI_PRICE)}* تومان/تن\n\n"
+    text += f"🔩 شمش فولادی:\n   *{format_number(BILLET_PRICE)}* تومان/تن\n\n"
+    text += f"📏 میلگرد:\n   *{format_number(REBAR_PRICE)}* تومان/تن\n"
     text += "\n" + "━" * 35 + "\n"
     text += "📌 منبع: بورس کالای ایران"
     await update.callback_query.edit_message_text(text, reply_markup=back_button(), parse_mode="Markdown")
@@ -120,11 +124,11 @@ async def free(update, context):
     await update.callback_query.answer()
     text = "🔄 *قیمت بازار آزاد ایران* 🔄\n"
     text += "━" * 35 + "\n\n"
-    text += f"🪨 کنسانتره سنگ آهن:\n   محدوده: *{to_persian(CONCENTRATE_PRICE - 200000):,} - {to_persian(CONCENTRATE_PRICE + 200000):,}* تومان/تن\n\n"
-    text += f"🟤 گندله:\n   محدوده: *{to_persian(PELLET_PRICE - 300000):,} - {to_persian(PELLET_PRICE + 300000):,}* تومان/تن\n\n"
-    text += f"🏭 آهن اسفنجی:\n   محدوده: *{to_persian(DRI_PRICE - 500):,} - {to_persian(DRI_PRICE + 500):,}* تومان/تن\n\n"
-    text += f"🔩 شمش فولادی:\n   محدوده: *{to_persian(BILLET_PRICE - 2000):,} - {to_persian(BILLET_PRICE + 2000):,}* تومان/تن\n\n"
-    text += f"📏 میلگرد:\n   محدوده: *{to_persian(REBAR_PRICE - 3000):,} - {to_persian(REBAR_PRICE + 3000):,}* تومان/تن\n"
+    text += f"🪨 کنسانتره سنگ آهن:\n   محدوده: *{format_number(CONCENTRATE_PRICE - 200000)} - {format_number(CONCENTRATE_PRICE + 200000)}* تومان/تن\n\n"
+    text += f"🟤 گندله:\n   محدوده: *{format_number(PELLET_PRICE - 300000)} - {format_number(PELLET_PRICE + 300000)}* تومان/تن\n\n"
+    text += f"🏭 آهن اسفنجی:\n   محدوده: *{format_number(DRI_PRICE - 500)} - {format_number(DRI_PRICE + 500)}* تومان/تن\n\n"
+    text += f"🔩 شمش فولادی:\n   محدوده: *{format_number(BILLET_PRICE - 2000)} - {format_number(BILLET_PRICE + 2000)}* تومان/تن\n\n"
+    text += f"📏 میلگرد:\n   محدوده: *{format_number(REBAR_PRICE - 3000)} - {format_number(REBAR_PRICE + 3000)}* تومان/تن\n"
     text += "\n" + "━" * 35 + "\n"
     text += "📌 منابع: آهن ملل، آهن آنلاین"
     await update.callback_query.edit_message_text(text, reply_markup=back_button(), parse_mode="Markdown")
@@ -135,23 +139,23 @@ async def factory(update, context):
     text = "🏭 *قیمت درب کارخانه* 🏭\n"
     text += "━" * 35 + "\n\n"
     text += "🔩 *شمش فولادی (تومان/تن)*\n"
-    text += f"   • فولاد اصفهان: *{to_persian(BILLET_PRICE):,}*\n"
-    text += f"   • فولاد یزد: *{to_persian(BILLET_PRICE - 100):,}*\n"
-    text += f"   • فولاد قزوین: *{to_persian(BILLET_PRICE - 2000):,}*\n\n"
+    text += f"   • فولاد اصفهان: *{format_number(BILLET_PRICE)}*\n"
+    text += f"   • فولاد یزد: *{format_number(BILLET_PRICE - 100)}*\n"
+    text += f"   • فولاد قزوین: *{format_number(BILLET_PRICE - 2000)}*\n\n"
     text += "📏 *میلگرد (تومان/کیلو)*\n"
-    text += f"   • ذوب آهن اصفهان: *{to_persian(REBAR_PRICE):,}*\n"
-    text += f"   • امیرکبیر کاشان: *{to_persian(REBAR_PRICE + 1000):,}*\n"
-    text += f"   • فولاد کاوه: *{to_persian(REBAR_PRICE - 1000):,}*\n\n"
+    text += f"   • ذوب آهن اصفهان: *{format_number(REBAR_PRICE)}*\n"
+    text += f"   • امیرکبیر کاشان: *{format_number(REBAR_PRICE + 1000)}*\n"
+    text += f"   • فولاد کاوه: *{format_number(REBAR_PRICE - 1000)}*\n\n"
     text += f"🏭 *آهن اسفنجی (تومان/تن)*\n"
-    text += f"   • فولاد میانه: *{to_persian(DRI_PRICE + 1300):,}*\n"
-    text += f"   • فولاد نطنز: *{to_persian(DRI_PRICE + 1000):,}*\n"
-    text += f"   • فولاد کاویان: *{to_persian(DRI_PRICE + 700):,}*\n\n"
+    text += f"   • فولاد میانه: *{format_number(DRI_PRICE + 1300)}*\n"
+    text += f"   • فولاد نطنز: *{format_number(DRI_PRICE + 1000)}*\n"
+    text += f"   • فولاد کاویان: *{format_number(DRI_PRICE + 700)}*\n\n"
     text += f"🟤 *گندله (تومان/تن)*\n"
-    text += f"   • گل گهر: *{to_persian(PELLET_PRICE - 100000):,}*\n"
-    text += f"   • چادرملو: *{to_persian(PELLET_PRICE - 200000):,}*\n\n"
+    text += f"   • گل گهر: *{format_number(PELLET_PRICE - 100000)}*\n"
+    text += f"   • چادرملو: *{format_number(PELLET_PRICE - 200000)}*\n\n"
     text += f"🪨 *کنسانتره (تومان/تن)*\n"
-    text += f"   • گل گهر: *{to_persian(CONCENTRATE_PRICE - 500000):,}*\n"
-    text += f"   • سنگ آهن مرکزی: *{to_persian(CONCENTRATE_PRICE - 200000):,}*\n"
+    text += f"   • گل گهر: *{format_number(CONCENTRATE_PRICE - 500000)}*\n"
+    text += f"   • سنگ آهن مرکزی: *{format_number(CONCENTRATE_PRICE - 200000)}*\n"
     text += "\n" + "━" * 35 + "\n"
     text += "📌 منابع: شاهراهان، آهن ملل"
     await update.callback_query.edit_message_text(text, reply_markup=back_button(), parse_mode="Markdown")
@@ -163,8 +167,8 @@ async def rate(update, context):
         rates = json.load(f)
     text = "💱 *نرخ ارز بازار ایران* 💱\n"
     text += "━" * 35 + "\n\n"
-    text += f"🏦 نرخ مبادله‌ای (نیمایی):\n   • دلار آمریکا: *{to_persian(rates['secondary']):,}* تومان\n\n"
-    text += f"🔄 نرخ بازار آزاد:\n   • دلار آمریکا: *{to_persian(rates['free']):,}* تومان\n"
+    text += f"🏦 نرخ مبادله‌ای (نیمایی):\n   • دلار آمریکا: *{format_number(rates['secondary'])}* تومان\n\n"
+    text += f"🔄 نرخ بازار آزاد:\n   • دلار آمریکا: *{format_number(rates['free'])}* تومان\n"
     text += "\n" + "━" * 35 + "\n"
     text += "📌 منابع: بانک مرکزی، نوبیتکس، TGJU"
     await update.callback_query.edit_message_text(text, reply_markup=back_button(), parse_mode="Markdown")
@@ -191,6 +195,10 @@ async def back(update, context):
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="Markdown"
     )
+
+# ========== حل مشکل Conflict ==========
+# خطای Conflict به این معنی است که یک نمونه دیگر از ربات در جای دیگر در حال اجراست.
+# برای حل، توکن را در BotFather ریست کنید و در Railway متغیر BOT_TOKEN را با توکن جدید جایگزین کنید.
 
 # ========== اجرا ==========
 def main():
