@@ -1,120 +1,68 @@
-import os
-import logging
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler
+import requests
+import re
+from bs4 import BeautifulSoup
 
-from price_fetcher.exchange_rate import get_usd_toman_rate
-from price_fetcher.world_price import get_iron_ore_price, get_billet_price
-from price_fetcher.iran_price import get_iran_billet_price, get_iran_rebar_price
-from utils.helpers import to_persian_digits
+def get_iran_billet_price():
+    """دریافت قیمت شمش از آهن ملل (تومان/تن)"""
+    try:
+        url = "https://ahanmelal.com/steel-ingots/steel-ingot-price"
+        headers = {"User-Agent": "Mozilla/5.0"}
+        r = requests.get(url, headers=headers, timeout=15)
+        if r.status_code == 200:
+            soup = BeautifulSoup(r.text, 'html.parser')
+            for sel in ['.product-price', '.price', '.current-price']:
+                elem = soup.select_one(sel)
+                if elem:
+                    txt = elem.get_text(strip=True)
+                    nums = re.findall(r'(\d{1,3}(?:,\d{3})*)', txt)
+                    if nums:
+                        return int(nums[0].replace(',', ''))
+    except:
+        pass
+    return None
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+def get_iran_rebar_price():
+    """دریافت قیمت میلگرد از آهن ملل (تومان/کیلو)"""
+    try:
+        url = "https://ahanmelal.com/steel-products/rebar-price"
+        headers = {"User-Agent": "Mozilla/5.0"}
+        r = requests.get(url, headers=headers, timeout=15)
+        if r.status_code == 200:
+            soup = BeautifulSoup(r.text, 'html.parser')
+            for sel in ['.product-price', '.price', '.current-price']:
+                elem = soup.select_one(sel)
+                if elem:
+                    txt = elem.get_text(strip=True)
+                    nums = re.findall(r'(\d{1,3}(?:,\d{3})*)', txt)
+                    if nums:
+                        return int(nums[0].replace(',', ''))
+    except:
+        pass
+    return None
 
-TOKEN = os.environ.get("BOT_TOKEN")
+def get_iran_dri_price():
+    """دریافت قیمت آهن اسفنجی (تومان/تن) - داده ثابت موقت"""
+    try:
+        url = "https://ahanmelal.com/sponge-iron/sponge-iron-price"
+        headers = {"User-Agent": "Mozilla/5.0"}
+        r = requests.get(url, headers=headers, timeout=15)
+        if r.status_code == 200:
+            soup = BeautifulSoup(r.text, 'html.parser')
+            for sel in ['.product-price', '.price', '.current-price']:
+                elem = soup.select_one(sel)
+                if elem:
+                    txt = elem.get_text(strip=True)
+                    nums = re.findall(r'(\d{1,3}(?:,\d{3})*)', txt)
+                    if nums:
+                        return int(nums[0].replace(',', ''))
+    except:
+        pass
+    return 15500  # fallback
 
-# ========== منوی اصلی ==========
-def get_main_menu():
-    keyboard = [
-        [InlineKeyboardButton("🌍 قیمت جهانی", callback_data="world")],
-        [InlineKeyboardButton("🇮🇷 قیمت ایران", callback_data="iran")],
-        [InlineKeyboardButton("💱 نرخ ارز", callback_data="rate")]
-    ]
-    return InlineKeyboardMarkup(keyboard)
+def get_iran_concentrate_price():
+    """دریافت قیمت کنسانتره - داده ثابت موقت"""
+    return 4800000
 
-# ========== دکمه بازگشت ==========
-def get_back_button():
-    keyboard = [[InlineKeyboardButton("🏠 بازگشت به منوی اصلی", callback_data="back_to_menu")]]
-    return InlineKeyboardMarkup(keyboard)
-
-# ========== شروع ==========
-async def start(update: Update, context):
-    await update.message.reply_text(
-        "🤖 *ربات قیمت آهن و فولاد*\n\nلطفاً یکی از گزینه‌ها را انتخاب کنید:",
-        reply_markup=get_main_menu(),
-        parse_mode="Markdown"
-    )
-
-# ========== بازگشت به منوی اصلی ==========
-async def back_to_menu(update: Update, context):
-    query = update.callback_query
-    await query.answer()
-    await query.edit_message_text(
-        "🤖 *ربات قیمت آهن و فولاد*\n\nلطفاً یکی از گزینه‌ها را انتخاب کنید:",
-        reply_markup=get_main_menu(),
-        parse_mode="Markdown"
-    )
-
-# ========== قیمت جهانی ==========
-async def world_price(update: Update, context):
-    query = update.callback_query
-    await query.answer()
-    
-    iron = get_iron_ore_price()
-    billet = get_billet_price()
-    
-    text = "🌍 *قیمت‌های جهانی* 🌍\n\n"
-    text += f"🪨 سنگ آهن ۶۲٪ (CFR چین): *${to_persian_digits(iron)}*/تن\n"
-    text += f"🔩 بیلت (FOB چین): *${to_persian_digits(billet)}*/تن\n"
-    text += "\n📌 منابع: Platts / Fastmarkets"
-    
-    await query.edit_message_text(text, reply_markup=get_back_button(), parse_mode="Markdown")
-
-# ========== قیمت ایران ==========
-async def iran_price(update: Update, context):
-    query = update.callback_query
-    await query.answer()
-    
-    billet = get_iran_billet_price()
-    rebar = get_iran_rebar_price()
-    
-    text = "🇮🇷 *قیمت‌های داخلی ایران* 🇮🇷\n\n"
-    
-    if billet:
-        text += f"🔩 شمش فولادی: *{to_persian_digits(billet)}* تومان/کیلو\n"
-    else:
-        text += "🔩 شمش فولادی: در حال دریافت...\n"
-    
-    if rebar:
-        text += f"📏 میلگرد: *{to_persian_digits(rebar)}* تومان/کیلو\n"
-    else:
-        text += "📏 میلگرد: در حال دریافت...\n"
-    
-    text += "\n📌 منبع: آهن ملل"
-    
-    await query.edit_message_text(text, reply_markup=get_back_button(), parse_mode="Markdown")
-
-# ========== نرخ ارز ==========
-async def rate(update: Update, context):
-    query = update.callback_query
-    await query.answer()
-    
-    toman = get_usd_toman_rate()
-    text = f"💱 *نرخ دلار بازار آزاد*\n\n🇺🇸 ۱ دلار = *{to_persian_digits(toman)}* تومان"
-    
-    await query.edit_message_text(text, reply_markup=get_back_button(), parse_mode="Markdown")
-
-# ========== اجرای اصلی ==========
-def main():
-    if not TOKEN:
-        logger.error("BOT_TOKEN not found!")
-        return
-    
-    app = Application.builder().token(TOKEN).build()
-    
-    # دستور start
-    app.add_handler(CommandHandler("start", start))
-    
-    # دکمه‌های منو
-    app.add_handler(CallbackQueryHandler(world_price, pattern="^world$"))
-    app.add_handler(CallbackQueryHandler(iran_price, pattern="^iran$"))
-    app.add_handler(CallbackQueryHandler(rate, pattern="^rate$"))
-    
-    # دکمه بازگشت
-    app.add_handler(CallbackQueryHandler(back_to_menu, pattern="^back_to_menu$"))
-    
-    logger.info("🤖 ربات روشن شد!")
-    app.run_polling()
-
-if __name__ == "__main__":
-    main()
+def get_iran_pellet_price():
+    """دریافت قیمت گندله - داده ثابت موقت"""
+    return 6800000
