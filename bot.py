@@ -3,6 +3,11 @@ import logging
 from telegram import Update
 from telegram.ext import Application, CommandHandler
 
+from price_fetcher.exchange_rate import get_usd_toman_rate
+from price_fetcher.world_price import get_iron_ore_price, get_billet_price
+from price_fetcher.iran_price import get_iran_billet_price, get_iran_rebar_price
+from utils.helpers import to_persian_digits
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -10,39 +15,46 @@ TOKEN = os.environ.get("BOT_TOKEN")
 
 async def start(update: Update, context):
     await update.message.reply_text(
-        "✅ ربات کار می‌کند!\n\n"
-        "برای دریافت قیمت‌های جهانی: /global\n"
-        "برای دریافت قیمت ایران: /iran\n"
-        "برای محاسبه سود: /profit"
+        "🤖 ربات قیمت آهن و فولاد\n\n"
+        "📊 /world - قیمت جهانی\n"
+        "🇮🇷 /iran - قیمت ایران\n"
+        "💱 /rate - نرخ ارز"
     )
 
-async def global_price(update: Update, context):
-    text = "🌍 قیمت‌های جهانی 🌍\n\n"
-    text += "• کنسانتره سنگ آهن\n   FOB خلیج فارس: $85\n   CFR شمال چین: $130\n   CFR جنوب چین: $131\n\n"
-    text += "• گندله\n   FOB خلیج فارس: $105\n   CFR شمال چین: $155\n   CFR جنوب چین: $156\n\n"
-    text += "• آهن اسفنجی\n   FOB خلیج فارس: $200\n   CFR شمال چین: $280\n   CFR جنوب چین: $282\n\n"
-    text += "• شمش فولادی\n   FOB خلیج فارس: $480\n   CFR شمال چین: $520\n   CFR جنوب چین: $515\n\n"
-    text += "• میلگرد\n   FOB خلیج فارس: $550\n   CFR شمال چین: $600\n   CFR جنوب چین: $595"
-    await update.message.reply_text(text)
+async def world_price(update: Update, context):
+    iron = get_iron_ore_price()
+    billet = get_billet_price()
+    
+    text = "🌍 *قیمت‌های جهانی* 🌍\n\n"
+    text += f"🪨 سنگ آهن ۶۲٪ (CFR چین): *${to_persian_digits(iron)}*/تن\n"
+    text += f"🔩 بیلت (FOB چین): *${to_persian_digits(billet)}*/تن\n"
+    text += "\n📌 منابع: Platts / Fastmarkets"
+    
+    await update.message.reply_text(text, parse_mode="Markdown")
 
 async def iran_price(update: Update, context):
-    text = "🇮🇷 قیمت‌های داخلی ایران 🇮🇷\n\n"
-    text += "🔹 بورس کالا (ICE):\n"
-    text += "   • میلگرد: ۱۵,۸۰۰ - ۱۶,۸۰۰ تومان/کیلو\n"
-    text += "   • شمش: ۴۱,۰۰۰ - ۴۴,۰۰۰ تومان/تن\n"
-    text += "   • آهن اسفنجی: ۱۴,۸۰۰ - ۱۵,۵۰۰ تومان/کیلو\n\n"
-    text += "🔹 بازار آزاد:\n"
-    text += "   • میلگرد: ۶۳,۰۰۰ - ۶۸,۰۰۰ تومان/کیلو\n"
-    text += "   • شمش: ۵۴,۰۰۰ - ۵۷,۰۰۰ تومان/تن\n"
-    text += "   • آهن اسفنجی: ۱۶,۵۰۰ - ۱۷,۵۰۰ تومان/کیلو"
-    await update.message.reply_text(text)
+    billet = get_iran_billet_price()
+    rebar = get_iran_rebar_price()
+    
+    text = "🇮🇷 *قیمت‌های داخلی ایران* 🇮🇷\n\n"
+    if billet:
+        text += f"🔩 شمش فولادی: *{to_persian_digits(billet)}* تومان/کیلو\n"
+    else:
+        text += "🔩 شمش فولادی: در حال دریافت...\n"
+    
+    if rebar:
+        text += f"📏 میلگرد: *{to_persian_digits(rebar)}* تومان/کیلو\n"
+    else:
+        text += "📏 میلگرد: در حال دریافت...\n"
+    
+    text += "\n📌 منبع: آهن ملل"
+    
+    await update.message.reply_text(text, parse_mode="Markdown")
 
-async def profit(update: Update, context):
-    await update.message.reply_text(
-        "📊 محاسبه سود\n\n"
-        "لطفاً قیمت خرید را به دلار وارد کنید.\n"
-        "مثال: 95"
-    )
+async def rate(update: Update, context):
+    toman = get_usd_toman_rate()
+    text = f"💱 *نرخ دلار بازار آزاد*\n\n🇺🇸 ۱ دلار = *{to_persian_digits(toman)}* تومان"
+    await update.message.reply_text(text, parse_mode="Markdown")
 
 def main():
     if not TOKEN:
@@ -51,11 +63,11 @@ def main():
     
     app = Application.builder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("global", global_price))
+    app.add_handler(CommandHandler("world", world_price))
     app.add_handler(CommandHandler("iran", iran_price))
-    app.add_handler(CommandHandler("profit", profit))
+    app.add_handler(CommandHandler("rate", rate))
     
-    logger.info("ربات روشن شد!")
+    logger.info("🤖 ربات روشن شد!")
     app.run_polling()
 
 if __name__ == "__main__":
