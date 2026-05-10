@@ -14,7 +14,7 @@ from price_fetcher import (
     get_iran_prices,
     iran_prices_cache
 )
-from utils import get_back_button
+from utils import get_back_button, to_persian_digits
 
 # ========== تنظیمات لاگ ==========
 logging.basicConfig(
@@ -28,7 +28,7 @@ SELECT_PRODUCT, GET_PRICE, GET_RATE, GET_TONNAGE, GET_FREIGHT, GET_PORT = range(
 
 user_data = {}
 
-# ========== قیمت‌های جهانی (داده ثابت – قابل جایگزینی با API زنده) ==========
+# ========== قیمت‌های جهانی (داده ثابت – بدون API) ==========
 GLOBAL_PRODUCTS = [
     {"name": "کنسانتره سنگ آهن", "fob": 85, "north": 130, "south": 131},
     {"name": "گندله", "fob": 105, "north": 155, "south": 156},
@@ -92,7 +92,7 @@ async def show_global(update: Update, context):
     text += f"🔄 بروزرسانی: {datetime.now().strftime('%H:%M - %Y/%m/%d')}"
     await query.edit_message_text(text, reply_markup=get_back_button("main"), parse_mode="Markdown")
 
-# ========== قیمت ایران ==========
+# ========== قیمت ایران (با اعداد فارسی) ==========
 async def show_iran(update: Update, context):
     query = update.callback_query
     await query.answer()
@@ -102,24 +102,25 @@ async def show_iran(update: Update, context):
     last = iran_prices_cache.get("last_update")
     upd_txt = f"🔄 {last.strftime('%H:%M - %Y/%m/%d')}" if last else "🔄 در حال دریافت..."
 
-    text = f"🇮🇷 *قیمت‌های داخلی ایران* 🇮🇷\n{upd_txt}\n\n"
+    text = f"🇮🇷 *قیمت‌های داخلی ایران* 🇮🇷\n{to_persian_digits(upd_txt)}\n\n"
     text += "💱 *نرخ ارز:*\n"
-    text += f"   • دلار مبادله‌ای (نیمایی): *{nego:,}* تومان\n"
-    text += f"   • دلار بازار آزاد: *{free:,}* تومان\n\n"
+    text += f"   • دلار مبادله‌ای (نیمایی): *{to_persian_digits(f'{nego:,}')}* تومان\n"
+    text += f"   • دلار بازار آزاد: *{to_persian_digits(f'{free:,}')}* تومان\n\n"
 
     text += "🏭 *بورس کالا (ICE) - تومان:*\n"
     for k, v in iran.items():
-        text += f"   • {v['name']}: *{v['ice']}* تومان/{v['unit']}\n"
+        text += f"   • {v['name']}: *{to_persian_digits(v['ice'])}* تومان/{v['unit']}\n"
     text += "\n🔄 *بازار آزاد - تومان:*\n"
     for k, v in iran.items():
-        text += f"   • {v['name']}: *{v['free_market']}* تومان/{v['unit']}\n"
+        text += f"   • {v['name']}: *{to_persian_digits(v['free_market'])}* تومان/{v['unit']}\n"
 
     text += "\n🏭 *قیمت درب کارخانه:*\n"
-    text += f"   • شمش: {iran['billet']['factory']} تومان/کیلو\n"
-    text += f"   • میلگرد: {iran['rebar']['factory']} تومان/کیلو\n"
-    text += f"   • گندله: {iran['pellet']['factory']} تومان/تن\n"
-    text += f"   • کنسانتره: {iran['concentrate']['factory']} تومان/تن\n"
+    text += f"   • شمش: {to_persian_digits(iran['billet']['factory'])} تومان/کیلو\n"
+    text += f"   • میلگرد: {to_persian_digits(iran['rebar']['factory'])} تومان/کیلو\n"
+    text += f"   • گندله: {to_persian_digits(iran['pellet']['factory'])} تومان/تن\n"
+    text += f"   • کنسانتره: {to_persian_digits(iran['concentrate']['factory'])} تومان/تن\n"
     text += "\n📌 منابع: بورس کالا، آهن ملل، نوبیتکس، TGJU"
+
     await query.edit_message_text(text, reply_markup=get_back_button("main"), parse_mode="Markdown")
 
 # ========== محاسبه سود ==========
@@ -361,7 +362,7 @@ def main():
 
     app = Application.builder().token(token).build()
 
-    # هندلرهای عمومی (بازگشت)
+    # هندلرهای بازگشت عمومی
     app.add_handler(CallbackQueryHandler(back_to_main, pattern="^back_to_main$"))
     app.add_handler(CallbackQueryHandler(back_to_product, pattern="^back_to_product$"))
     app.add_handler(CallbackQueryHandler(back_to_price, pattern="^back_to_price$"))
@@ -393,10 +394,9 @@ def main():
     app.add_handler(CommandHandler("cancel", cancel))
 
     async def post_init(_):
-        await get_iran_prices()  # بارگذاری اولیه کش
+        await get_iran_prices()
 
     app.post_init = post_init
-
     logger.info("🤖 ربات روشن شد!")
     app.run_polling()
 
