@@ -19,9 +19,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# ========== توابع کمکی ==========
+# ========== توابع کمکی (داخل همان فایل) ==========
 def to_persian_digits(text: str) -> str:
-    """تبدیل ارقام انگلیسی به فارسی"""
     persian_digits = {
         '0': '۰', '1': '۱', '2': '۲', '3': '۳', '4': '۴',
         '5': '۵', '6': '۶', '7': '۷', '8': '۸', '9': '۹'
@@ -59,9 +58,8 @@ def get_back_button(step: str) -> InlineKeyboardMarkup:
     else:
         return InlineKeyboardMarkup([[InlineKeyboardButton("🏠 منوی اصلی", callback_data="back_to_main")]])
 
-# ========== نرخ ارز (تومان) ==========
+# ========== نرخ ارز ==========
 async def get_usd_nego_rate_toman() -> int:
-    """دلار مبادله‌ای (نیمایی) – تومان"""
     try:
         async with aiohttp.ClientSession() as session:
             async with session.get("https://www.tgju.org/sana/", timeout=10) as resp:
@@ -72,10 +70,9 @@ async def get_usd_nego_rate_toman() -> int:
                         return int(match.group(1).replace(',', '')) // 10
     except Exception as e:
         logger.error(f"Error fetching nego rate: {e}")
-    return 146800  # fallback
+    return 146800
 
 async def get_usd_free_rate_toman() -> int:
-    """دلار بازار آزاد – تومان (اولویت با TGJU)"""
     try:
         async with aiohttp.ClientSession() as session:
             async with session.get("https://api.tgju.org/v1/price/price_dollar_rl", timeout=5) as resp:
@@ -99,8 +96,7 @@ async def get_usd_free_rate_toman() -> int:
         logger.error(f"Nobitex error: {e}")
     return 178000
 
-# ========== قیمت‌های جهانی (ثابت – قابل به‌روزرسانی دستی) ==========
-# لطفاً هر هفته این اعداد را با آخرین نرخ‌های بازار اصلاح کنید
+# ========== قیمت‌های جهانی (ثابت – قابل تغییر توسط شما) ==========
 GLOBAL_PRODUCTS = [
     {"name": "کنسانتره سنگ آهن", "fob": 85, "north": 130, "south": 131},
     {"name": "گندله", "fob": 105, "north": 155, "south": 156},
@@ -207,7 +203,7 @@ async def get_iran_prices():
 SELECT_PRODUCT, GET_PRICE, GET_RATE, GET_TONNAGE, GET_FREIGHT, GET_PORT = range(6)
 user_data = {}
 
-# ========== منوی اصلی ==========
+# ========== هندلرهای منوی اصلی ==========
 async def start(update: Update, context):
     keyboard = [
         [InlineKeyboardButton("📊 محاسبه سود", callback_data="start_profit")],
@@ -249,7 +245,7 @@ async def back_to_main(update: Update, context):
     )
     return ConversationHandler.END
 
-# ========== قیمت جهانی (با اعداد فارسی) ==========
+# ========== قیمت جهانی ==========
 async def show_global(update: Update, context):
     query = update.callback_query
     await query.answer()
@@ -262,7 +258,7 @@ async def show_global(update: Update, context):
     text += f"🔄 بروزرسانی: {to_persian_digits(datetime.now().strftime('%H:%M - %Y/%m/%d'))}"
     await query.edit_message_text(text, reply_markup=get_back_button("main"), parse_mode="Markdown")
 
-# ========== قیمت ایران (با اعداد فارسی) ==========
+# ========== قیمت ایران ==========
 async def show_iran(update: Update, context):
     query = update.callback_query
     await query.answer()
