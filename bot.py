@@ -11,9 +11,18 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler
 TOKEN = os.environ.get("BOT_TOKEN")
 RATE_FILE = "rates.json"
 
-# ========== قیمت‌های معتبر شمش (دستی) ==========
-# قیمت واقعی شمش در بازار ایران (تومان/تن)
-BILLET_PRICE = 42500  # میانگین ۴۲,۵۰۰ تومان/تن
+# ========== تبدیل اعداد به فارسی ==========
+def to_persian(text):
+    persian = {'0': '۰', '1': '۱', '2': '۲', '3': '۳', '4': '۴',
+               '5': '۵', '6': '۶', '7': '۷', '8': '۸', '9': '۹'}
+    return ''.join(persian.get(ch, ch) for ch in str(text))
+
+# ========== قیمت‌های معتبر (واقعی) ==========
+CONCENTRATE_PRICE = 4800000      # کنسانتره: ۴,۸۰۰,۰۰۰ تومان/تن
+PELLET_PRICE = 6500000           # گندله: ۶,۵۰۰,۰۰۰ تومان/تن
+DRI_PRICE = 15500                # آهن اسفنجی: ۱۵,۵۰۰ تومان/تن (واقعی)
+BILLET_PRICE = 42500             # شمش: ۴۲,۵۰۰ تومان/تن
+REBAR_PRICE = 58000              # میلگرد: ۵۸,۰۰۰ تومان/تن
 
 # ========== بروزرسانی نرخ ارز ==========
 def update_rates():
@@ -72,25 +81,25 @@ async def world(update, context):
     await update.callback_query.answer()
     text = "🌍 *قیمت‌های جهانی* 🌍\n\n"
     text += "• *کنسانتره سنگ آهن*\n"
-    text += "   🇮🇷 FOB خلیج فارس: *$85*/تن\n"
-    text += "   🇨🇳 CFR شمال چین: *$130*/تن\n"
-    text += "   🇨🇳 CFR جنوب چین: *$131*/تن\n\n"
+    text += "   🇮🇷 FOB خلیج فارس: *$۸۵*/تن\n"
+    text += "   🇨🇳 CFR شمال چین: *$۱۳۰*/تن\n"
+    text += "   🇨🇳 CFR جنوب چین: *$۱۳۱*/تن\n\n"
     text += "• *گندله*\n"
-    text += "   🇮🇷 FOB خلیج فارس: *$105*/تن\n"
-    text += "   🇨🇳 CFR شمال چین: *$155*/تن\n"
-    text += "   🇨🇳 CFR جنوب چین: *$156*/تن\n\n"
+    text += "   🇮🇷 FOB خلیج فارس: *$۱۰۵*/تن\n"
+    text += "   🇨🇳 CFR شمال چین: *$۱۵۵*/تن\n"
+    text += "   🇨🇳 CFR جنوب چین: *$۱۵۶*/تن\n\n"
     text += "• *آهن اسفنجی*\n"
-    text += "   🇮🇷 FOB خلیج فارس: *$200*/تن\n"
-    text += "   🇨🇳 CFR شمال چین: *$280*/تن\n"
-    text += "   🇨🇳 CFR جنوب چین: *$282*/تن\n\n"
+    text += "   🇮🇷 FOB خلیج فارس: *$۲۰۰*/تن\n"
+    text += "   🇨🇳 CFR شمال چین: *$۲۸۰*/تن\n"
+    text += "   🇨🇳 CFR جنوب چین: *$۲۸۲*/تن\n\n"
     text += "• *شمش فولادی*\n"
-    text += "   🇮🇷 FOB خلیج فارس: *$480*/تن\n"
-    text += "   🇨🇳 CFR شمال چین: *$520*/تن\n"
-    text += "   🇨🇳 CFR جنوب چین: *$515*/تن\n\n"
+    text += "   🇮🇷 FOB خلیج فارس: *$۴۸۰*/تن\n"
+    text += "   🇨🇳 CFR شمال چین: *$۵۲۰*/تن\n"
+    text += "   🇨🇳 CFR جنوب چین: *$۵۱۵*/تن\n\n"
     text += "• *میلگرد*\n"
-    text += "   🇮🇷 FOB خلیج فارس: *$550*/تن\n"
-    text += "   🇨🇳 CFR شمال چین: *$600*/تن\n"
-    text += "   🇨🇳 CFR جنوب چین: *$595*/تن\n"
+    text += "   🇮🇷 FOB خلیج فارس: *$۵۵۰*/تن\n"
+    text += "   🇨🇳 CFR شمال چین: *$۶۰۰*/تن\n"
+    text += "   🇨🇳 CFR جنوب چین: *$۵۹۵*/تن\n"
     text += "\n📌 منابع: Platts, Fastmarkets, SMM"
     await update.callback_query.edit_message_text(text, reply_markup=back_button(), parse_mode="Markdown")
 
@@ -99,21 +108,16 @@ async def ice(update, context):
     await update.callback_query.answer()
     text = "🏭 *قیمت بورس کالا (ICE)* 🏭\n"
     text += "━" * 35 + "\n\n"
-    text += "🪨 *کنسانتره سنگ آهن*\n"
-    text += "   قیمت پایه: ۴,۲۰۰,۰۰۰ - ۴,۸۰۰,۰۰۰ تومان/تن\n"
-    text += "   آخرین معامله: ۴,۶۰۰,۰۰۰ تومان/تن\n\n"
-    text += "🟤 *گندله*\n"
-    text += "   قیمت پایه: ۶,۲۰۰,۰۰۰ - ۶,۸۰۰,۰۰۰ تومان/تن\n"
-    text += "   آخرین معامله: ۶,۵۰۰,۰۰۰ تومان/تن\n\n"
-    text += "🏭 *آهن اسفنجی*\n"
-    text += "   قیمت پایه: ۱۴,۸۰۰ - ۱۵,۵۰۰ تومان/تن\n"
-    text += "   آخرین معامله: ۱۵,۲۰۰ تومان/تن\n\n"
-    text += "🔩 *شمش فولادی*\n"
-    text += f"   قیمت پایه: {BILLET_PRICE:,} تومان/تن\n"
-    text += f"   آخرین معامله: {BILLET_PRICE:,} تومان/تن\n\n"
-    text += "📏 *میلگرد*\n"
-    text += "   قیمت پایه: ۵۰,۰۰۰ - ۶۵,۰۰۰ تومان/کیلو\n"
-    text += "   آخرین معامله: ۵۷,۵۰۰ تومان/کیلو\n"
+    text += f"🪨 *کنسانتره سنگ آهن*\n"
+    text += f"   قیمت پایه: *{to_persian(CONCENTRATE_PRICE):,}* تومان/تن\n\n"
+    text += f"🟤 *گندله*\n"
+    text += f"   قیمت پایه: *{to_persian(PELLET_PRICE):,}* تومان/تن\n\n"
+    text += f"🏭 *آهن اسفنجی*\n"
+    text += f"   قیمت پایه: *{to_persian(DRI_PRICE):,}* تومان/تن\n\n"
+    text += f"🔩 *شمش فولادی*\n"
+    text += f"   قیمت پایه: *{to_persian(BILLET_PRICE):,}* تومان/تن\n\n"
+    text += f"📏 *میلگرد*\n"
+    text += f"   قیمت پایه: *{to_persian(REBAR_PRICE):,}* تومان/تن\n"
     text += "\n" + "━" * 35 + "\n"
     text += "📌 منبع: بورس کالای ایران (IME)"
     await update.callback_query.edit_message_text(text, reply_markup=back_button(), parse_mode="Markdown")
@@ -121,25 +125,23 @@ async def ice(update, context):
 # ========== بازار آزاد ==========
 async def free(update, context):
     await update.callback_query.answer()
-    billet_min = BILLET_PRICE - 2000
-    billet_max = BILLET_PRICE + 2000
     text = "🔄 *قیمت بازار آزاد ایران* 🔄\n"
     text += "━" * 35 + "\n\n"
-    text += "🪨 *کنسانتره سنگ آهن*\n"
-    text += "   محدوده قیمت: ۵,۴۰۰,۰۰۰ - ۵,۸۰۰,۰۰۰ تومان/تن\n"
-    text += "   قیمت میانگین: ۵,۶۰۰,۰۰۰ تومان/تن\n\n"
-    text += "🟤 *گندله*\n"
-    text += "   محدوده قیمت: ۶,۸۰۰,۰۰۰ - ۷,۵۰۰,۰۰۰ تومان/تن\n"
-    text += "   قیمت میانگین: ۷,۱۵۰,۰۰۰ تومان/تن\n\n"
-    text += "🏭 *آهن اسفنجی*\n"
-    text += "   محدوده قیمت: ۱۶,۰۰۰ - ۱۶,۸۰۰ تومان/تن\n"
-    text += "   قیمت میانگین: ۱۶,۴۰۰ تومان/تن\n\n"
-    text += "🔩 *شمش فولادی*\n"
-    text += f"   محدوده قیمت: {billet_min:,} - {billet_max:,} تومان/تن\n"
-    text += f"   قیمت میانگین: {BILLET_PRICE:,} تومان/تن\n\n"
-    text += "📏 *میلگرد*\n"
-    text += "   محدوده قیمت: ۶۳,۰۰۰ - ۶۸,۰۰۰ تومان/تن\n"
-    text += "   قیمت میانگین: ۶۵,۵۰۰ تومان/تن\n"
+    text += f"🪨 *کنسانتره سنگ آهن*\n"
+    text += f"   محدوده قیمت: *{to_persian(CONCENTRATE_PRICE - 200000):,} - {to_persian(CONCENTRATE_PRICE + 200000):,}* تومان/تن\n"
+    text += f"   قیمت میانگین: *{to_persian(CONCENTRATE_PRICE):,}* تومان/تن\n\n"
+    text += f"🟤 *گندله*\n"
+    text += f"   محدوده قیمت: *{to_persian(PELLET_PRICE - 300000):,} - {to_persian(PELLET_PRICE + 300000):,}* تومان/تن\n"
+    text += f"   قیمت میانگین: *{to_persian(PELLET_PRICE):,}* تومان/تن\n\n"
+    text += f"🏭 *آهن اسفنجی*\n"
+    text += f"   محدوده قیمت: *{to_persian(DRI_PRICE - 500):,} - {to_persian(DRI_PRICE + 500):,}* تومان/تن\n"
+    text += f"   قیمت میانگین: *{to_persian(DRI_PRICE):,}* تومان/تن\n\n"
+    text += f"🔩 *شمش فولادی*\n"
+    text += f"   محدوده قیمت: *{to_persian(BILLET_PRICE - 2000):,} - {to_persian(BILLET_PRICE + 2000):,}* تومان/تن\n"
+    text += f"   قیمت میانگین: *{to_persian(BILLET_PRICE):,}* تومان/تن\n\n"
+    text += f"📏 *میلگرد*\n"
+    text += f"   محدوده قیمت: *{to_persian(REBAR_PRICE - 3000):,} - {to_persian(REBAR_PRICE + 3000):,}* تومان/تن\n"
+    text += f"   قیمت میانگین: *{to_persian(REBAR_PRICE):,}* تومان/تن\n"
     text += "\n" + "━" * 35 + "\n"
     text += "📌 منابع: آهن ملل، آهن آنلاین، شاهراهان"
     await update.callback_query.edit_message_text(text, reply_markup=back_button(), parse_mode="Markdown")
@@ -147,27 +149,26 @@ async def free(update, context):
 # ========== قیمت کارخانه ==========
 async def factory(update, context):
     await update.callback_query.answer()
-    billet_min = BILLET_PRICE - 2000
     text = "🏭 *قیمت درب کارخانه* 🏭\n"
     text += "━" * 35 + "\n\n"
     text += "🔩 *شمش فولادی (تومان/تن)*\n"
-    text += f"   • فولاد اصفهان: {BILLET_PRICE:,}\n"
-    text += f"   • فولاد یزد: {BILLET_PRICE-100:,}\n"
-    text += f"   • فولاد قزوین: {billet_min:,}\n\n"
+    text += f"   • فولاد اصفهان: *{to_persian(BILLET_PRICE):,}*\n"
+    text += f"   • فولاد یزد: *{to_persian(BILLET_PRICE - 100):,}*\n"
+    text += f"   • فولاد قزوین: *{to_persian(BILLET_PRICE - 2000):,}*\n\n"
     text += "📏 *میلگرد (تومان/کیلو)*\n"
-    text += "   • ذوب آهن اصفهان: ۶۵,۰۰۰\n"
-    text += "   • امیرکبیر کاشان: ۶۶,۰۰۰\n"
-    text += "   • فولاد کاوه: ۶۴,۰۰۰\n\n"
-    text += "🏭 *آهن اسفنجی (تومان/تن)*\n"
-    text += "   • فولاد میانه: ۱۶,۸۰۰\n"
-    text += "   • فولاد نطنز: ۱۶,۵۰۰\n"
-    text += "   • فولاد کاویان: ۱۶,۲۰۰\n\n"
+    text += f"   • ذوب آهن اصفهان: *{to_persian(REBAR_PRICE):,}*\n"
+    text += f"   • امیرکبیر کاشان: *{to_persian(REBAR_PRICE + 1000):,}*\n"
+    text += f"   • فولاد کاوه: *{to_persian(REBAR_PRICE - 1000):,}*\n\n"
+    text += f"🏭 *آهن اسفنجی (تومان/تن)*\n"
+    text += f"   • فولاد میانه: *{to_persian(DRI_PRICE + 1300):,}*\n"
+    text += f"   • فولاد نطنز: *{to_persian(DRI_PRICE + 1000):,}*\n"
+    text += f"   • فولاد کاویان: *{to_persian(DRI_PRICE + 700):,}*\n\n"
     text += "🟤 *گندله (تومان/تن)*\n"
-    text += "   • گل گهر: ۶,۴۰۰,۰۰۰\n"
-    text += "   • چادرملو: ۶,۳۰۰,۰۰۰\n\n"
+    text += f"   • گل گهر: *{to_persian(PELLET_PRICE - 100000):,}*\n"
+    text += f"   • چادرملو: *{to_persian(PELLET_PRICE - 200000):,}*\n\n"
     text += "🪨 *کنسانتره (تومان/تن)*\n"
-    text += "   • گل گهر: ۴,۳۰۰,۰۰۰\n"
-    text += "   • سنگ آهن مرکزی: ۴,۶۰۰,۰۰۰\n"
+    text += f"   • گل گهر: *{to_persian(CONCENTRATE_PRICE - 500000):,}*\n"
+    text += f"   • سنگ آهن مرکزی: *{to_persian(CONCENTRATE_PRICE - 200000):,}*\n"
     text += "\n" + "━" * 35 + "\n"
     text += "📌 منابع: شاهراهان، آهن ملل"
     await update.callback_query.edit_message_text(text, reply_markup=back_button(), parse_mode="Markdown")
@@ -180,9 +181,9 @@ async def rate(update, context):
     text = "💱 *نرخ ارز بازار ایران* 💱\n"
     text += "━" * 35 + "\n\n"
     text += "🏦 *نرخ مبادله‌ای (نیمایی) - سامانه سنا*\n"
-    text += f"   • دلار آمریکا: *{rates['secondary']:,}* تومان\n\n"
+    text += f"   • دلار آمریکا: *{to_persian(rates['secondary']):,}* تومان\n\n"
     text += "🔄 *نرخ بازار آزاد*\n"
-    text += f"   • دلار آمریکا: *{rates['free']:,}* تومان\n"
+    text += f"   • دلار آمریکا: *{to_persian(rates['free']):,}* تومان\n"
     text += "\n" + "━" * 35 + "\n"
     text += "📌 منابع: بانک مرکزی، نوبیتکس، TGJU"
     await update.callback_query.edit_message_text(text, reply_markup=back_button(), parse_mode="Markdown")
