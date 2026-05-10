@@ -13,17 +13,35 @@ logger = logging.getLogger(__name__)
 
 TOKEN = os.environ.get("BOT_TOKEN")
 
-# ========== منوی اصلی با دکمه ==========
-async def start(update: Update, context):
+# ========== منوی اصلی ==========
+def get_main_menu():
     keyboard = [
         [InlineKeyboardButton("🌍 قیمت جهانی", callback_data="world")],
         [InlineKeyboardButton("🇮🇷 قیمت ایران", callback_data="iran")],
         [InlineKeyboardButton("💱 نرخ ارز", callback_data="rate")]
     ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
+    return InlineKeyboardMarkup(keyboard)
+
+# ========== دکمه بازگشت ==========
+def get_back_button():
+    keyboard = [[InlineKeyboardButton("🏠 بازگشت به منوی اصلی", callback_data="back_to_menu")]]
+    return InlineKeyboardMarkup(keyboard)
+
+# ========== شروع ==========
+async def start(update: Update, context):
     await update.message.reply_text(
         "🤖 *ربات قیمت آهن و فولاد*\n\nلطفاً یکی از گزینه‌ها را انتخاب کنید:",
-        reply_markup=reply_markup,
+        reply_markup=get_main_menu(),
+        parse_mode="Markdown"
+    )
+
+# ========== بازگشت به منوی اصلی ==========
+async def back_to_menu(update: Update, context):
+    query = update.callback_query
+    await query.answer()
+    await query.edit_message_text(
+        "🤖 *ربات قیمت آهن و فولاد*\n\nلطفاً یکی از گزینه‌ها را انتخاب کنید:",
+        reply_markup=get_main_menu(),
         parse_mode="Markdown"
     )
 
@@ -40,7 +58,7 @@ async def world_price(update: Update, context):
     text += f"🔩 بیلت (FOB چین): *${to_persian_digits(billet)}*/تن\n"
     text += "\n📌 منابع: Platts / Fastmarkets"
     
-    await query.edit_message_text(text, parse_mode="Markdown")
+    await query.edit_message_text(text, reply_markup=get_back_button(), parse_mode="Markdown")
 
 # ========== قیمت ایران ==========
 async def iran_price(update: Update, context):
@@ -64,7 +82,7 @@ async def iran_price(update: Update, context):
     
     text += "\n📌 منبع: آهن ملل"
     
-    await query.edit_message_text(text, parse_mode="Markdown")
+    await query.edit_message_text(text, reply_markup=get_back_button(), parse_mode="Markdown")
 
 # ========== نرخ ارز ==========
 async def rate(update: Update, context):
@@ -74,7 +92,7 @@ async def rate(update: Update, context):
     toman = get_usd_toman_rate()
     text = f"💱 *نرخ دلار بازار آزاد*\n\n🇺🇸 ۱ دلار = *{to_persian_digits(toman)}* تومان"
     
-    await query.edit_message_text(text, parse_mode="Markdown")
+    await query.edit_message_text(text, reply_markup=get_back_button(), parse_mode="Markdown")
 
 # ========== اجرای اصلی ==========
 def main():
@@ -87,10 +105,13 @@ def main():
     # دستور start
     app.add_handler(CommandHandler("start", start))
     
-    # دکمه‌ها
+    # دکمه‌های منو
     app.add_handler(CallbackQueryHandler(world_price, pattern="^world$"))
     app.add_handler(CallbackQueryHandler(iran_price, pattern="^iran$"))
     app.add_handler(CallbackQueryHandler(rate, pattern="^rate$"))
+    
+    # دکمه بازگشت
+    app.add_handler(CallbackQueryHandler(back_to_menu, pattern="^back_to_menu$"))
     
     logger.info("🤖 ربات روشن شد!")
     app.run_polling()
