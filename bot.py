@@ -58,12 +58,12 @@ def update_rates():
             asks = r.json().get("asks", [])
             free = int(float(asks[0][0])) // 10 if asks else 177400
         else:
-            free = 177400
+            free = 183000
     except:
-        free = 177400
+        free = 183000
     current = load_json(RATE_FILE, {})
     current["free"] = free
-    current.setdefault("secondary", 146300)
+    current.setdefault("secondary", 140000)
     current["last_update"] = datetime.now().isoformat()
     save_json(RATE_FILE, current)
 
@@ -196,8 +196,8 @@ def update_world_prices():
 
 def update_metals_prices():
     metals = load_json(METALS_FILE, {
-        "gold": 3300, "silver": 33, "platinum": 1000,
-        "palladium": 1000, "iron_ore": 105, "source": "پیش‌فرض"
+        "gold": 4700, "silver": 33.5, "platinum": 2050,
+        "palladium": 1480, "iron_ore": 105, "source": "پیش‌فرض"
     })
     if METALPRICE_API_KEY:
         try:
@@ -242,7 +242,7 @@ def start_all_updaters():
 
 # ========== لود داده ==========
 def load_rates():
-    return load_json(RATE_FILE, {"free": 177400, "secondary": 146300})
+    return load_json(RATE_FILE, {"free": 183000, "secondary": 140000})
 
 def load_prices():
     return load_json(PRICE_FILE, {"concentrate": 4800000, "pellet": 6500000, "dri": 14166, "billet": 42500, "rebar": 58000})
@@ -258,7 +258,7 @@ def load_world_prices():
 
 def load_metals():
     return load_json(METALS_FILE, {
-        "gold": 3300, "silver": 33, "platinum": 1000, "palladium": 1000, "iron_ore": 105
+        "gold": 4700, "silver": 33.5, "platinum": 2050, "palladium": 1480, "iron_ore": 105
     })
 
 # ========== کیبوردها ==========
