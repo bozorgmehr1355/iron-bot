@@ -597,6 +597,62 @@ async def receive_value(update, context):
 
     return WAITING_VALUE
 
+# ========== دریافت قیمت از اسکرپر (push از کامپیوتر) ==========
+SCRAPER_SECRET = os.environ.get("SCRAPER_SECRET", "change_this_secret")
+
+async def push_prices(update, context):
+    """دستور مخفی برای دریافت قیمت از اسکرپر محلی"""
+    if not is_admin(update):
+        return
+
+    if not context.args:
+        await update.message.reply_text("❌ فرمت اشتباه.")
+        return
+
+    try:
+        # فرمت: /push_prices SECRET {"key": value, ...}
+        if context.args[0] != SCRAPER_SECRET:
+            await update.message.reply_text("❌ کلید اشتباه.")
+            return
+
+        raw = " ".join(context.args[1:])
+        data = json.loads(raw)
+
+        updated = []
+
+        # قیمت‌های داخلی
+        if "domestic" in data:
+            d = load_prices()
+            d.update(data["domestic"])
+            d["last_update"] = datetime.now().isoformat()
+            save_json(PRICE_FILE, d)
+            updated.append("قیمت داخلی ✅")
+
+        # قیمت‌های جهانی
+        if "world" in data:
+            w = load_world_prices()
+            w.update(data["world"])
+            w["last_update"] = datetime.now().isoformat()
+            w["source"] = "markazeahan/اسکرپر"
+            save_json(WORLD_PRICE_FILE, w)
+            updated.append("قیمت جهانی ✅")
+
+        # نرخ ارز
+        if "rates" in data:
+            r = load_rates()
+            r.update(data["rates"])
+            r["last_update"] = datetime.now().isoformat()
+            save_json(RATE_FILE, r)
+            updated.append("نرخ ارز ✅")
+
+        msg = "📥 *قیمت‌ها از اسکرپر دریافت شد:*\n" + "\n".join(updated)
+        await update.message.reply_text(msg, parse_mode="Markdown")
+
+    except json.JSONDecodeError:
+        await update.message.reply_text("❌ JSON نامعتبر.")
+    except Exception as e:
+        await update.message.reply_text(f"❌ خطا: {e}")
+
 # ========== اجرا ==========
 def main():
     if not TOKEN:
@@ -620,6 +676,7 @@ def main():
     )
 
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("push_prices", push_prices))
     app.add_handler(admin_conv)
     app.add_handler(CallbackQueryHandler(world,   pattern="^world$"))
     app.add_handler(CallbackQueryHandler(metals,  pattern="^metals$"))
