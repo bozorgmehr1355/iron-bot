@@ -120,16 +120,79 @@ def update_all_prices():
     save_json(PRICE_FILE, current)
 
 def update_world_prices():
-    current = load_json(WORLD_PRICE_FILE, {
-        "concentrate_fob": 85, "concentrate_north": 104, "concentrate_south": 105,
-        "pellet_fob": 99, "pellet_north": 155, "pellet_south": 156,
-        "dri_fob": 200, "dri_north": 280, "dri_south": 282,
-        "billet_fob": 480, "billet_north": 520, "billet_south": 515,
-        "rebar_fob": 550, "rebar_north": 600, "rebar_south": 595,
-        "source": "Mysteel/Platts"
-    })
-    current["last_update"] = datetime.now().isoformat()
-    save_json(WORLD_PRICE_FILE, current)
+    print(f"[{datetime.now().strftime('%H:%M')}] بروزرسانی قیمت‌های جهانی...")
+
+    # مقدار پیش‌فرض سنگ آهن 62% CFR چین
+    iron_ore = 104.0
+    source = "پیش‌فرض"
+
+    # دریافت سنگ آهن از metalpriceapi
+    if METALPRICE_API_KEY:
+        try:
+            r = requests.get("https://api.metalpriceapi.com/v1/latest", params={
+                "api_key": METALPRICE_API_KEY, "base": "USD",
+                "currencies": "IRON"
+            }, timeout=10)
+            if r.status_code == 200:
+                data = r.json()
+                if data.get("success"):
+                    rates = data.get("rates", {})
+                    # USDIRON = قیمت مستقیم دلار/تن
+                    if rates.get("USDIRON") and rates["USDIRON"] > 0:
+                        iron_ore = round(rates["USDIRON"], 1)
+                        source = "MetalpriceAPI"
+                        print(f"سنگ آهن از API: ${iron_ore}/تن")
+        except Exception as e:
+            print(f"خطای API سنگ آهن: {e}")
+
+    # ========== فرمول‌های محاسباتی بر اساس نسبت‌های تاریخی بازار ==========
+    # کنسانتره سنگ آهن (62% Fe)
+    con_north  = round(iron_ore, 1)                    # CFR شمال چین = قیمت پایه
+    con_south  = round(iron_ore + 1, 1)                # CFR جنوب چین = شمال + 1$
+    con_fob    = round(iron_ore - 19, 1)               # FOB خلیج فارس = شمال - 19$
+
+    # گندله (ضریب تاریخی ≈ 1.49 برابر کنسانتره)
+    pel_north  = round(con_north * 1.49, 1)
+    pel_south  = round(con_south * 1.49, 1)
+    pel_fob    = round(con_fob * 1.49, 1)
+
+    # آهن اسفنجی DRI (ضریب ≈ 2.02 برابر گندله)
+    dri_fob    = round(pel_fob * 2.02, 1)
+    dri_north  = round(pel_north * 1.81, 1)
+    dri_south  = round(pel_south * 1.81, 1)
+
+    # شمش فولادی (ضریب ≈ 2.4 برابر آهن اسفنجی FOB)
+    bil_fob    = round(dri_fob * 2.4, 1)
+    bil_north  = round(bil_fob * 1.08, 1)
+    bil_south  = round(bil_fob * 1.07, 1)
+
+    # میلگرد (ضریب ≈ 1.15 برابر شمش)
+    reb_fob    = round(bil_fob * 1.15, 1)
+    reb_north  = round(bil_north * 1.15, 1)
+    reb_south  = round(bil_south * 1.15, 1)
+
+    world_prices = {
+        "iron_ore_base": iron_ore,
+        "concentrate_fob": con_fob,
+        "concentrate_north": con_north,
+        "concentrate_south": con_south,
+        "pellet_fob": pel_fob,
+        "pellet_north": pel_north,
+        "pellet_south": pel_south,
+        "dri_fob": dri_fob,
+        "dri_north": dri_north,
+        "dri_south": dri_south,
+        "billet_fob": bil_fob,
+        "billet_north": bil_north,
+        "billet_south": bil_south,
+        "rebar_fob": reb_fob,
+        "rebar_north": reb_north,
+        "rebar_south": reb_south,
+        "last_update": datetime.now().isoformat(),
+        "source": source
+    }
+    save_json(WORLD_PRICE_FILE, world_prices)
+    print(f"[{datetime.now().strftime('%H:%M')}] قیمت جهانی کامل شد (پایه: ${iron_ore})")
 
 def update_metals_prices():
     metals = load_json(METALS_FILE, {
@@ -250,7 +313,8 @@ async def world(update, context):
     text += f"   🇮🇷 FOB خلیج فارس: *${format_number(p['rebar_fob'])}*/تن\n"
     text += f"   🇨🇳 CFR شمال چین: *${format_number(p['rebar_north'])}*/تن\n"
     text += f"   🇨🇳 CFR جنوب چین: *${format_number(p['rebar_south'])}*/تن\n"
-    text += f"\n📊 منبع: {p.get('source', 'Mysteel/Platts')}"
+    text += f"\n📊 منبع: {p.get('source', 'MetalpriceAPI')}"
+    text += f"\n🪨 پایه سنگ آهن ۶۲٪: *${p.get('iron_ore_base', 104)}*/تن"
     await update.callback_query.edit_message_text(text, reply_markup=back_button(), parse_mode="Markdown")
 
 async def metals(update, context):
