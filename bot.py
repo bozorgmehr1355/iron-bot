@@ -428,8 +428,10 @@ def rate_keyboard():
     ])
 
 async def admin_panel(update, context):
+    user_id = update.effective_user.id
+    print(f"[ADMIN] درخواست از: {user_id} | ADMIN_ID: {ADMIN_ID} | match: {user_id == ADMIN_ID}")
     if not is_admin(update):
-        await update.message.reply_text("⛔️ دسترسی ندارید.")
+        await update.message.reply_text(f"⛔️ دسترسی ندارید. (ID شما: {user_id})")
         return ConversationHandler.END
     await update.message.reply_text(
         "🔐 *پنل مدیریت*\n\nکدام بخش را می‌خواهید ویرایش کنید؟",
