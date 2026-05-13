@@ -115,9 +115,7 @@ def update_all_prices():
     billet = scrape_billet_from_ahanmelal()
     rebar = scrape_rebar_from_ahanmelal()
     if billet: current["billet"] = billet
-    if rebar: current["r
-
-ebar"] = rebar
+    if rebar: current["rebar"] = rebar
     current["last_update"] = datetime.now().isoformat()
     save_json(PRICE_FILE, current)
 
@@ -174,10 +172,10 @@ def start_all_updaters():
     update_all_prices()
     update_world_prices()
     update_metals_prices()
-    _run_loop(update_rates, 15  60)
-    _run_loop(update_all_prices, 6  60  60)
-    _run_loop(update_world_prices, 6  60  60)
-    _run_loop(update_metals_prices, 6  60 * 60)
+    _run_loop(update_rates, 15 * 60)
+    _run_loop(update_all_prices, 6 * 60 * 60)
+    _run_loop(update_world_prices, 6 * 60 * 60)
+    _run_loop(update_metals_prices, 6 * 60 * 60)
 
 # ========== لود داده ==========
 def load_rates():
@@ -215,13 +213,11 @@ def back_button():
     return InlineKeyboardMarkup([[InlineKeyboardButton("🏠 بازگشت به منو", callback_data="back")]])
 
 MAIN_TEXT = (
-    "🏭 ربات تخصصی آهن و فولاد 🏭\n\n"
-    "📌 *م
-
-حصولات تحت پوشش:*\n"
+    "🏭 *ربات تخصصی آهن و فولاد* 🏭\n\n"
+    "📌 *محصولات تحت پوشش:*\n"
     "• کنسانتره سنگ آهن\n• گندله\n• آهن اسفنجی\n"
     "• شمش فولادی\n• میلگرد\n• فلزات گران‌بها\n\n"
-    "🔄 بروزرسانی: نرخ ارز هر ۱۵ دقیقه، قیمت‌ها هر ۶ ساعت\n\n"
+    "🔄 *بروزرسانی:* نرخ ارز هر ۱۵ دقیقه، قیمت‌ها هر ۶ ساعت\n\n"
     "لطفاً یکی از گزینه‌ها را انتخاب کنید:"
 )
 
@@ -233,27 +229,27 @@ async def world(update, context):
     await update.callback_query.answer()
     p = load_world_prices()
     now = to_persian(datetime.now().strftime('%Y/%m/%d - %H:%M'))
-    text = f"🌍 قیمت‌های جهانی 🌍\n🔄 {now}\n\n"
-    text += "• کنسانتره سنگ آهن\n"
-    text += f"   🇮🇷 FOB خلیج فارس: ${format_number(p['concentrate_fob'])}/تن\n"
-    text += f"   🇨🇳 CFR شمال چین: ${format_number(p['concentrate_north'])}/تن\n"
-    text += f"   🇨🇳 CFR جنوب چین: ${format_number(p['concentrate_south'])}/تن\n\n"
-    text += "• گندله\n"
-    text += f"   🇮🇷 FOB خلیج فارس: ${format_number(p['pellet_fob'])}/تن\n"
-    text += f"   🇨🇳 CFR شمال چین: ${format_number(p['pellet_north'])}/تن\n"
-    text += f"   🇨🇳 CFR جنوب چین: ${format_number(p['pellet_south'])}/تن\n\n"
-    text += "• آهن اسفنجی\n"
-    text += f"   🇮🇷 FOB خلیج فارس: ${format_number(p['dri_fob'])}/تن\n"
-    text += f"   🇨🇳 CFR شمال چین: ${format_number(p['dri_north'])}/تن\n"
-    text += f"   🇨🇳 CFR جنوب چین: ${format_number(p['dri_south'])}/تن\n\n"
-    text += "• شمش فولادی\n"
-    text += f"   🇮🇷 FOB خلیج فارس: ${format_number(p['billet_fob'])}/تن\n"
-    text += f"   🇨🇳 CFR شمال چین: ${format_number(p['billet_north'])}/تن\n"
-    text += f"   🇨🇳 CFR جنوب چین: ${format_number(p['billet_south'])}/تن\n\n"
-    text += "• میلگرد\n"
-    text += f"   🇮🇷 FOB خلیج فارس: ${format_number(p['rebar_fob'])}/تن\n"
-    text += f"   🇨🇳 CFR شمال چین: ${format_number(p['rebar_north'])}/تن\n"
-    text += f"   🇨🇳 CFR جنوب چین: ${format_number(p['rebar_south'])}/تن\n"
+    text = f"🌍 *قیمت‌های جهانی* 🌍\n🔄 {now}\n\n"
+    text += "• *کنسانتره سنگ آهن*\n"
+    text += f"   🇮🇷 FOB خلیج فارس: *${format_number(p['concentrate_fob'])}*/تن\n"
+    text += f"   🇨🇳 CFR شمال چین: *${format_number(p['concentrate_north'])}*/تن\n"
+    text += f"   🇨🇳 CFR جنوب چین: *${format_number(p['concentrate_south'])}*/تن\n\n"
+    text += "• *گندله*\n"
+    text += f"   🇮🇷 FOB خلیج فارس: *${format_number(p['pellet_fob'])}*/تن\n"
+    text += f"   🇨🇳 CFR شمال چین: *${format_number(p['pellet_north'])}*/تن\n"
+    text += f"   🇨🇳 CFR جنوب چین: *${format_number(p['pellet_south'])}*/تن\n\n"
+    text += "• *آهن اسفنجی*\n"
+    text += f"   🇮🇷 FOB خلیج فارس: *${format_number(p['dri_fob'])}*/تن\n"
+    text += f"   🇨🇳 CFR شمال چین: *${format_number(p['dri_north'])}*/تن\n"
+    text += f"   🇨🇳 CFR جنوب چین: *${format_number(p['dri_south'])}*/تن\n\n"
+    text += "• *شمش فولادی*\n"
+    text += f"   🇮🇷 FOB خلیج فارس: *${format_number(p['billet_fob'])}*/تن\n"
+    text += f"   🇨🇳 CFR شمال چین: *${format_number(p['billet_north'])}*/تن\n"
+    text += f"   🇨🇳 CFR جنوب چین: *${format_number(p['billet_south'])}*/تن\n\n"
+    text += "• *میلگرد*\n"
+    text += f"   🇮🇷 FOB خلیج فارس: *${format_number(p['rebar_fob'])}*/تن\n"
+    text += f"   🇨🇳 CFR شمال چین: *${format_number(p['rebar_north'])}*/تن\n"
+    text += f"   🇨🇳 CFR جنوب چین: *${format_number(p['rebar_south'])}*/تن\n"
     text += f"\n📊 منبع: {p.get('source', 'Mysteel/Platts')}"
     await update.callback_query.edit_message_text(text, reply_markup=back_button(), parse_mode="Markdown")
 
@@ -261,12 +257,12 @@ async def metals(update, context):
     await update.callback_query.answer()
     m = load_metals()
     now = to_persian(datetime.now().strftime('%Y/%m/%d - %H:%M'))
-    text = f"💛 فلزات گران‌بها 💛\n🔄 {now}\n" + "━"  30 + "\n\n"
-    text += f"🥇 طلا (XAU):\n   ${format_float(m['gold'])}* / اونس تروی\n\n"
-    text += f"🥈 نقره (XAG):\n   ${format_float(m['silver'])} / اونس تروی\n\n"
-    text += f"⚪️ پلاتین (XPT):\n   ${format_float(m['platinum'])} / اونس تروی\n\n"
-    text += f"🔘 پالادیوم (XPD):\n   ${format_float(m['palladium'])} / اونس تروی\n\n"
-    text += f"🪨 سنگ آهن (IRON):\n   ${format_float(m['iron_ore'])} / تن\n"
+    text = f"💛 *فلزات گران‌بها* 💛\n🔄 {now}\n" + "━" * 30 + "\n\n"
+    text += f"🥇 طلا (XAU):\n   *${format_float(m['gold'])}* / اونس تروی\n\n"
+    text += f"🥈 نقره (XAG):\n   *${format_float(m['silver'])}* / اونس تروی\n\n"
+    text += f"⚪️ پلاتین (XPT):\n   *${format_float(m['platinum'])}* / اونس تروی\n\n"
+    text += f"🔘 پالادیوم (XPD):\n   *${format_float(m['palladium'])}* / اونس تروی\n\n"
+    text += f"🪨 سنگ آهن (IRON):\n   *${format_float(m['iron_ore'])}* / تن\n"
     text += "\n" + "━" * 30 + "\n"
     text += f"📊 منبع: {m.get('source', 'MetalpriceAPI')}\n"
     text += "⚠️ داده‌ها با تاخیر ۲۴ ساعته (پلن رایگان)"
@@ -275,12 +271,12 @@ async def metals(update, context):
 async def ice(update, context):
     await update.callback_query.answer()
     p = load_prices()
-    text = "🏭 قیمت بورس کالا 🏭\n" + "━"  35 + "\n\n"
-    text += f"🪨 کنسانتره:\n   {format_number(p['concentrate'])}* تومان/تن\n\n"
-    text += f"🟤 گندله:\n   {format_number(p['pellet'])} تومان/تن\n\n"
-    text += f"🏭 آهن اسفنجی:\n   {format_number(p['dri'])} تومان/کیلو\n\n"
-    text += f"🔩 شمش فولادی:\n   {format_number(p['billet'])} تومان/کیلو\n\n"
-    text += f"📏 میلگرد:\n   {format_number(p['rebar'])} تومان/کیلو\n"
+    text = "🏭 *قیمت بورس کالا* 🏭\n" + "━" * 35 + "\n\n"
+    text += f"🪨 کنسانتره:\n   *{format_number(p['concentrate'])}* تومان/تن\n\n"
+    text += f"🟤 گندله:\n   *{format_number(p['pellet'])}* تومان/تن\n\n"
+    text += f"🏭 آهن اسفنجی:\n   *{format_number(p['dri'])}* تومان/کیلو\n\n"
+    text += f"🔩 شمش فولادی:\n   *{format_number(p['billet'])}* تومان/کیلو\n\n"
+    text += f"📏 میلگرد:\n   *{format_number(p['rebar'])}* تومان/کیلو\n"
     text += "\n" + "━" * 35 + "\n"
     text += f"📅 بروزرسانی: {to_persian(p.get('last_update', '')[:16])}"
     await update.callback_query.edit_message_text(text, reply_markup=back_button(), parse_mode="Markdown")
@@ -288,14 +284,12 @@ async def ice(update, context):
 async def free(update, context):
     await update.callback_query.answer()
     p = load_prices()
-    text = "🔄 قیمت بازار آزاد ایران 🔄\n" + "━"  35 + "\n\n"
-    text += f"🪨 کنسانتره:\n   {format_number(p['concentrate']-200000)} - {format_number(p['concentrate']+200000)}* تومان/
-
-تن\n\n"
-    text += f"🟤 گندله:\n   {format_number(p['pellet']-300000)} - {format_number(p['pellet']+300000)} تومان/تن\n\n"
-    text += f"🏭 آهن اسفنجی:\n   {format_number(p['dri']-500)} - {format_number(p['dri']+500)} تومان/کیلو\n\n"
-    text += f"🔩 شمش فولادی:\n   {format_number(p['billet']-2000)} - {format_number(p['billet']+2000)} تومان/کیلو\n\n"
-    text += f"📏 میلگرد:\n   {format_number(p['rebar']-3000)} - {format_number(p['rebar']+3000)} تومان/کیلو\n"
+    text = "🔄 *قیمت بازار آزاد ایران* 🔄\n" + "━" * 35 + "\n\n"
+    text += f"🪨 کنسانتره:\n   *{format_number(p['concentrate']-200000)} - {format_number(p['concentrate']+200000)}* تومان/تن\n\n"
+    text += f"🟤 گندله:\n   *{format_number(p['pellet']-300000)} - {format_number(p['pellet']+300000)}* تومان/تن\n\n"
+    text += f"🏭 آهن اسفنجی:\n   *{format_number(p['dri']-500)} - {format_number(p['dri']+500)}* تومان/کیلو\n\n"
+    text += f"🔩 شمش فولادی:\n   *{format_number(p['billet']-2000)} - {format_number(p['billet']+2000)}* تومان/کیلو\n\n"
+    text += f"📏 میلگرد:\n   *{format_number(p['rebar']-3000)} - {format_number(p['rebar']+3000)}* تومان/کیلو\n"
     text += "\n" + "━" * 35 + "\n"
     text += f"📅 بروزرسانی: {to_persian(p.get('last_update', '')[:16])}"
     await update.callback_query.edit_message_text(text, reply_markup=back_button(), parse_mode="Markdown")
@@ -303,25 +297,25 @@ async def free(update, context):
 async def factory(update, context):
     await update.callback_query.answer()
     p = load_prices()
-    text = "🏭 قیمت درب کارخانه 🏭\n" + "━" * 35 + "\n\n"
-    text += "🔩 شمش فولادی (تومان/کیلو)\n"
-    text += f"   • فولاد اصفهان: {format_number(p['billet'])}\n"
-    text += f"   • فولاد یزد: {format_number(p['billet']-100)}\n"
-    text += f"   • فولاد قزوین: {format_number(p['billet']-2000)}\n\n"
-    text += "📏 میلگرد (تومان/کیلو)\n"
-    text += f"   • ذوب آهن اصفهان: {format_number(p['rebar'])}\n"
-    text += f"   • امیرکبیر کاشان: {format_number(p['rebar']+1000)}\n"
-    text += f"   • فولاد کاوه: {format_number(p['rebar']-1000)}\n\n"
-    text += "🏭 آهن اسفنجی (تومان/کیلو)\n"
-    text += f"   • فولاد میانه: {format_number(p['dri']+600)}\n"
-    text += f"   • فولاد نطنز: {format_number(p['dri']+400)}\n"
-    text += f"   • فولاد کاویان: {format_number(p['dri']+200)}\n\n"
-    text += "🟤 گندله (تومان/تن)\n"
-    text += f"   • گل گهر: {format_number(p['pellet']-100000)}\n"
-    text += f"   • چادرملو: {format_number(p['pellet']-200000)}\n\n"
-    text += "🪨 کنسانتره (تومان/تن)\n"
-    text += f"   • گل گهر: {format_number(p['concentrate']-500000)}\n"
-    text += f"   • سنگ آهن مرکزی: {format_number(p['concentrate']-200000)}\n"
+    text = "🏭 *قیمت درب کارخانه* 🏭\n" + "━" * 35 + "\n\n"
+    text += "🔩 *شمش فولادی (تومان/کیلو)*\n"
+    text += f"   • فولاد اصفهان: *{format_number(p['billet'])}*\n"
+    text += f"   • فولاد یزد: *{format_number(p['billet']-100)}*\n"
+    text += f"   • فولاد قزوین: *{format_number(p['billet']-2000)}*\n\n"
+    text += "📏 *میلگرد (تومان/کیلو)*\n"
+    text += f"   • ذوب آهن اصفهان: *{format_number(p['rebar'])}*\n"
+    text += f"   • امیرکبیر کاشان: *{format_number(p['rebar']+1000)}*\n"
+    text += f"   • فولاد کاوه: *{format_number(p['rebar']-1000)}*\n\n"
+    text += "🏭 *آهن اسفنجی (تومان/کیلو)*\n"
+    text += f"   • فولاد میانه: *{format_number(p['dri']+600)}*\n"
+    text += f"   • فولاد نطنز: *{format_number(p['dri']+400)}*\n"
+    text += f"   • فولاد کاویان: *{format_number(p['dri']+200)}*\n\n"
+    text += "🟤 *گندله (تومان/تن)*\n"
+    text += f"   • گل گهر: *{format_number(p['pellet']-100000)}*\n"
+    text += f"   • چادرملو: *{format_number(p['pellet']-200000)}*\n\n"
+    text += "🪨 *کنسانتره (تومان/تن)*\n"
+    text += f"   • گل گهر: *{format_number(p['concentrate']-500000)}*\n"
+    text += f"   • سنگ آهن مرکزی: *{format_number(p['concentrate']-200000)}*\n"
     text += "\n" + "━" * 35 + "\n"
     text += f"📅 بروزرسانی: {to_persian(p.get('last_update', '')[:16])}"
     await update.callback_query.edit_message_text(text, reply_markup=back_button(), parse_mode="Markdown")
@@ -329,9 +323,9 @@ async def factory(update, context):
 async def rate(update, context):
     await update.callback_query.answer()
     rates = load_rates()
-    text = "💱 نرخ ارز بازار ایران 💱\n" + "━"  35 + "\n\n"
-    text += f"🏦 نرخ نیمایی:\n   • دلار: {format_number(rates['secondary'])}* تومان\n\n"
-    text += f"🔄 بازار آزاد:\n   • دلار: {format_number(rates['free'])} تومان\n"
+    text = "💱 *نرخ ارز بازار ایران* 💱\n" + "━" * 35 + "\n\n"
+    text += f"🏦 نرخ نیمایی:\n   • دلار: *{format_number(rates['secondary'])}* تومان\n\n"
+    text += f"🔄 بازار آزاد:\n   • دلار: *{format_number(rates['free'])}* تومان\n"
     text += "\n" + "━" * 35 + "\n"
     text += f"📅 بروزرسانی: {to_persian(rates.get('last_update', '')[:16])}"
     await update.callback_query.edit_message_text(text, reply_markup=back_button(), parse_mode="Markdown")
@@ -356,9 +350,7 @@ ADMIN_FIELDS = {
     "w_bil_south": ("world", "billet_south",      "شمش CFR جنوب ($/تن)"),
     "w_reb_fob":   ("world", "rebar_fob",         "میلگرد FOB ($/تن)"),
     "w_reb_north": ("world", "rebar_north",       "میلگرد CFR شمال ($/تن)"),
-    "w_reb_south":
-
-("world", "rebar_south",       "میلگرد CFR جنوب ($/تن)"),
+    "w_reb_south": ("world", "rebar_south",       "میلگرد CFR جنوب ($/تن)"),
     "p_con":       ("price", "concentrate",       "کنسانتره بورس (تومان/تن)"),
     "p_pel":       ("price", "pellet",            "گندله بورس (تومان/تن)"),
     "p_dri":       ("price", "dri",               "آهن اسفنجی بورس (تومان/کیلو)"),
@@ -369,13 +361,13 @@ ADMIN_FIELDS = {
 }
 
 def get_current_value(field_key):
-    ftype, key,  = ADMIN_FIELDS[field_key]
+    ftype, key, _ = ADMIN_FIELDS[field_key]
     if ftype == "world": return load_world_prices().get(key, 0)
     elif ftype == "price": return load_prices().get(key, 0)
     elif ftype == "rate": return load_rates().get(key, 0)
 
 def set_value(field_key, value):
-    ftype, key,  = ADMIN_FIELDS[field_key]
+    ftype, key, _ = ADMIN_FIELDS[field_key]
     if ftype == "world":
         data = load_world_prices(); data[key] = value
         data["last_update"] = datetime.now().isoformat()
@@ -438,11 +430,9 @@ def rate_keyboard():
 async def admin_panel(update, context):
     if not is_admin(update):
         await update.message.reply_text("⛔️ دسترسی ندارید.")
-        return Conversa
-
-tionHandler.END
+        return ConversationHandler.END
     await update.message.reply_text(
-        "🔐 پنل مدیریت\n\nکدام بخش را می‌خواهید ویرایش کنید؟",
+        "🔐 *پنل مدیریت*\n\nکدام بخش را می‌خواهید ویرایش کنید؟",
         reply_markup=admin_main_keyboard(), parse_mode="Markdown"
     )
     return WAITING_VALUE
@@ -458,7 +448,7 @@ async def admin_callback(update, context):
 
     if data == "adm_world":
         p = load_world_prices()
-        text = "🌍 ویرایش قیمت‌های جهانی\n\n"
+        text = "🌍 *ویرایش قیمت‌های جهانی*\n\n"
         text += f"کنسانتره: FOB={p['concentrate_fob']}$ | شمال={p['concentrate_north']}$ | جنوب={p['concentrate_south']}$\n"
         text += f"گندله: FOB={p['pellet_fob']}$ | شمال={p['pellet_north']}$ | جنوب={p['pellet_south']}$\n"
         text += f"DRI: FOB={p['dri_fob']}$ | شمال={p['dri_north']}$ | جنوب={p['dri_south']}$\n"
@@ -468,7 +458,7 @@ async def admin_callback(update, context):
 
     elif data == "adm_domestic":
         p = load_prices()
-        text = "🏭 ویرایش قیمت‌های داخلی\n\n"
+        text = "🏭 *ویرایش قیمت‌های داخلی*\n\n"
         text += f"کنسانتره: {p['concentrate']:,} ت/تن\n"
         text += f"گندله: {p['pellet']:,} ت/تن\n"
         text += f"آهن اسفنجی: {p['dri']:,} ت/کیلو\n"
@@ -478,7 +468,7 @@ async def admin_callback(update, context):
 
     elif data == "adm_rate":
         r = load_rates()
-        text = "💱 ویرایش نرخ ارز\n\n"
+        text = "💱 *ویرایش نرخ ارز*\n\n"
         text += f"دلار آزاد: {r['free']:,} تومان\n"
         text += f"دلار نیمایی: {r['secondary']:,} تومان\n"
         await query.edit_message_text(text, reply_markup=rate_keyboard(), parse_mode="Markdown")
@@ -493,7 +483,7 @@ async def admin_callback(update, context):
 
     elif data == "adm_back":
         await query.edit_message_text(
-            "🔐 پنل مدیریت\n\nکدام بخش را می‌خواهید ویرایش کنید؟",
+            "🔐 *پنل مدیریت*\n\nکدام بخش را می‌خواهید ویرایش کنید؟",
             reply_markup=admin_main_keyboard(), parse_mode="Markdown"
         )
 
@@ -508,8 +498,8 @@ async def admin_callback(update, context):
             current = get_current_value(field_key)
             context.user_data["editing_field"] = field_key
             await query.edit_message_text(
-                f"✏️ ویرایش: {label}\n\n"
-                f"مقدار فعلی: {current:,}\n\n"
+                f"✏️ *ویرایش: {label}*\n\n"
+                f"مقدار فعلی: *{current:,}*\n\n"
                 f"عدد جدید را وارد کنید:",
                 parse_mode="Markdown"
             )
@@ -534,14 +524,14 @@ async def receive_value(update, context):
         _, _, label = ADMIN_FIELDS[field_key]
         context.user_data["editing_field"] = None
         await update.message.reply_text(
-            f"✅ {label}\nبه {value:,} بروزرسانی شد.",
+            f"✅ *{label}*\nبه *{value:,}* بروزرسانی شد.",
             reply_markup=admin_main_keyboard(),
             parse_mode="Markdown"
         )
     except ValueError:
         await update.message.reply_text("❌ عدد نامعتبر. دوباره وارد کنید:")
 
-return WAITING_VALUE
+    return WAITING_VALUE
 
 # ========== اجرا ==========
 def main():
@@ -578,6 +568,5 @@ def main():
     print("✅ ربات روشن شد")
     app.run_polling()
 
-if name == "__main__":
+if __name__ == "__main__":
     main()
-
