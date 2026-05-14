@@ -9,23 +9,9 @@ from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler
 
-# ==================== تنظیمات ====================
 TOKEN = os.environ.get("BOT_TOKEN")
-ADMIN_ID = 8742538592
-
-RATE_FILE = "rates.json"
-PRICE_FILE = "prices.json"
 
 _file_lock = threading.Lock()
-
-# ==================== ابزارها ====================
-def to_persian(num):
-    persian = {'0': '۰', '1': '۱', '2': '۲', '3': '۳', '4': '۴', '5': '۵', '6': '۶', '7': '۷', '8': '۸', '9': '۹'}
-    return ''.join(persian.get(ch, ch) for ch in str(num))
-
-
-def format_number(num):
-    return to_persian(f"{int(num):,}")
 
 def save_json(filepath, data):
     with _file_lock:
@@ -40,43 +26,44 @@ def load_json(filepath, default):
     except:
         return default
 
-HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
 
-def get_prices_from_text(text, min_p, max_p):
+def format_number(num):
+    persian = {'0': '۰', '1': '۱', '2': '۲', '3': '۳', '4': '۴', '5': '۵', '6': '۶', '7': '۷', '8': '۸', '9': '۹'}
+    return ''.join(persian.get(ch, ch) for ch in str(int(num)))
+
+HEADERS = {"User-Agent": "Mozilla/5.0"}
+
+def get_prices_from_text(text):
     matches = re.findall(r'(\d{1,3}(?:,\d{3})+(?:\.\d+)?)', text)
     prices = []
     for m in matches:
         try:
-            price = int(float(m.replace(',', '')))
-            if min_p < price < max_p:
-                prices.append(price)
-
+            p = int(float(m.replace(',', '')))
+            if 55000 < p < 90000:
+                prices.append(p)
         except:
             continue
     return prices
 
 def scrape_rebar():
-    urls = ["https://ahanonline.com/product-category/میلگرد-آجدار/قیمت-میلگرد-آجدار/"]
-    all_prices = []
-    for url in urls:
-        try:
-            r = requests.get(url, headers=HEADERS, timeout=25)
-            if r.status_code == 200:
-                prices = get_prices_from_text(r.text, 55000, 90000)
-                all_prices.extend(prices)
-        except:
-            continue
-    return int(sum(all_prices)/len(all_prices)) if all_prices else None
+    try:
+        r = requests.get("https://ahanonline.com/product-category/میلگرد-آجدار/قیمت-میلگرد-آجدار/", headers=HEADERS, timeout=20)
+        if r.status_code == 200:
+            prices = get_prices_from_text(r.text)
+            if prices:
 
-# ==================== بروزرسانی ====================
+                return int(sum(prices)/len(prices))
+    except:
+        pass
+    return None
+
 def update_all_prices():
-    current = load_json(PRICE_FILE, {"rebar": 58000})
+    current = load_json("prices.json", {"rebar": 58000})
     rebar = scrape_rebar()
     if rebar:
         current["rebar"] = rebar
     current["last_update"] = datetime.now().isoformat()
-
-    save_json(PRICE_FILE, current)
+    save_json("prices.json", current)
     return current
 
 def update_rates():
@@ -90,10 +77,11 @@ def update_rates():
     except:
         free = 177400
 
-    current = load_json(RATE_FILE, {})
+    current = load_json("rates.json", {})
     current["free"] = free
+
     current["last_update"] = datetime.now().isoformat()
-    save_json(RATE_FILE, current)
+    save_json("rates.json", current)
     return current
 
 def _run_loop(func, interval):
@@ -103,11 +91,9 @@ def _run_loop(func, interval):
             try:
                 func()
             except Exception as e:
-
                 print(f"خطا: {e}")
     threading.Thread(target=loop, daemon=True).start()
 
-# ==================== کیبورد ====================
 def main_keyboard():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("🌍 قیمت جهانی", callback_data="world")],
@@ -120,7 +106,6 @@ def back_button():
 
 MAIN_TEXT = "🏭 ربات تخصصی آهن و فولاد 🏭\n\nلطفاً یکی از گزینه‌ها را انتخاب کنید:"
 
-# ==================== هندلرها ====================
 async def start(update: Update, context):
     await update.message.reply_text(MAIN_TEXT, reply_markup=main_keyboard())
 
@@ -135,18 +120,17 @@ async def button_handler(update: Update, context):
 
     if data == "rate":
         rates = update_rates()
-        text = f"💱 نرخ ارز آزاد\n\nدلار آزاد: {format_number(rates.get('free', 177400))} تومان\nآخرین بروزرسانی: {rates.get('last_update', 'نامشخص')[:16]}"
+        text = f"💱 نرخ ارز آزاد\n\nدلار آزاد: {format_number(rates.get('free', 177400))} تومان"
 
     elif data == "free":
-        prices = load_json(PRICE_FILE, {})
-        text = f"🔄 بازار آزاد\n\nمیلگرد: {format_number(prices.get('rebar', 58000))} تومان\nآخرین بروزرسانی: {prices.get('last_update', 'نامشخص')[:16]}"
+        prices = load_json("prices.json", {})
+        text = f"🔄 بازار آزاد\n\nمیلگرد: {format_number(prices.get('rebar', 58000))} تومان"
 
     else:
-        text = "این بخش به زودی اضافه خواهد شد."
+        text = "این بخش به زودی اضافه میشود."
+
 
     await query.edit_message_text(text, reply_markup=back_button())
-
-# ==================== اجرا ====================
 
 def main():
     if not TOKEN:
@@ -162,9 +146,8 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(button_handler))
 
-    print("✅ ربات با موفقیت شروع شد")
+    print("✅ ربات شروع شد")
     app.run_polling()
-
 
 if __name__ == "__main__":
     main()
