@@ -144,17 +144,20 @@ async def button_handler(update: Update, context):
 
     if data == "rate":
         rates = update_rates()
-        text = "💱 نرخ ارز آزاد\n\n" \
-               f"دلار آزاد: {format_number(rates.get('free', 177400))} تومان\n" \
-               f"آخرین بروزرسانی: {rates.get('last_update', 
+        text = (
+            f"💱 نرخ ارز آزاد\n\n"
+            f"دلار آزاد: {format_number(rates.get('free', 177400))} تومان\n"
 
-'نامشخص')[:16]}"
+            f"آخرین بروزرسانی: {rates.get('last_update', 'نامشخص')[:16]}"
+        )
 
     elif data == "free":
         prices = load_json(PRICE_FILE, {})
-        text = "🔄 بازار آزاد\n\n" \
-               f"میلگرد: {format_number(prices.get('rebar', 58000))} تومان\n" \
-               f"آخرین بروزرسانی: {prices.get('last_update', 'نامشخص')[:16]}"
+        text = (
+            f"🔄 بازار آزاد\n\n"
+            f"میلگرد: {format_number(prices.get('rebar', 58000))} تومان\n"
+            f"آخرین بروزرسانی: {prices.get('last_update', 'نامشخص')[:16]}"
+        )
 
     else:
         text = "این بخش هنوز کامل پیاده‌سازی نشده است.\nبه زودی اضافه خواهد شد."
@@ -169,6 +172,7 @@ def main():
 
     update_all_prices()
     update_rates()
+
 
     _run_loop(update_all_prices, 7200)   # هر ۲ ساعت
     _run_loop(update_rates, 900)         # هر ۱۵ دقیقه
