@@ -307,6 +307,95 @@ def back_button():
 def back_to_factory_keyboard():
     return InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت به لیست محصولات", callback_data="factory")]])
 
+# --- تابعی برای خواندن فایل قیمت‌ها ---
+def load_factory_prices():
+    try:
+        with open('factory_prices.json', 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return {} # اگر فایل پیدا نشد، یک لیست خالی برمی‌گرداند
+
+# --- مرحله ۱: نمایش لیست محصولات (مثلا میلگرد، تیرآهن) ---
+async def factory_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    if query:
+        await query.answer()
+
+    prices_data = load_factory_prices()
+    keyboard = []
+    
+    # ساخت دکمه برای هر محصولی که در فایل json نوشتید
+    for product in prices_data.keys():
+        keyboard.append([InlineKeyboardButton(product, callback_data=f"fact_prod_{product}")])
+    
+    # دکمه بازگشت به منوی اصلی ربات
+    keyboard.append([InlineKeyboardButton("🔙 بازگشت به منوی اصلی", callback_data="main_menu")])
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    text = "🏭 *قیمت درب کارخانه*\n\nلطفاً محصول مورد نظر خود را انتخاب کنید:"
+    
+    if query:
+        await query.edit_message_text(text, reply_markup=reply_markup, parse_mode='Markdown')
+    else:
+        await update.message.reply_text(text, reply_markup=reply_markup, parse_mode='Markdown')
+
+# --- مرحله ۲: نمایش مناطق برای محصول انتخاب شده ---
+async def factory_product_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    # پیدا کردن اسم محصول از روی دکمه‌ای که کاربر کلیک کرده
+    product_name = query.data.replace("fact_prod_", "")
+    prices_data = load_factory_prices()
+    
+    if product_name not in prices_data:
+        await query.edit_message_text("❌ اطلاعاتی برای این محصول یافت نشد.")
+        return
+
+    regions = prices_data[product_name]
+    keyboard = []
+    
+    # ساخت دکمه برای مناطق (مثلا شمال، مرکز)
+    for region in regions.keys():
+        callback_data = f"fact_reg_{product_name}_{region}"
+        keyboard.append([InlineKeyboardButton(region, callback_data=callback_data)])
+        
+    keyboard.append([InlineKeyboardButton("🔙 بازگشت به لیست محصولات", callback_data="factory_menu_start")])
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    text = f"📍 *مناطق موجود برای {product_name}*\n\nلطفاً منطقه مورد نظر را انتخاب کنید:"
+    await query.edit_message_text(text, reply_markup=reply_markup, parse_mode='Markdown')
+
+# --- مرحله ۳: نمایش قیمت کارخانه‌های آن منطقه ---
+async def factory_region_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    # جدا کردن اسم محصول و منطقه از دکمه
+    data_parts = query.data.split("_")
+    product_name = data_parts[2]
+    region_name = data_parts[3]
+    
+    prices_data = load_factory_prices()
+    factories = prices_data.get(product_name, {}).get(region_name, {})
+    
+    if not factories:
+        await query.edit_message_text("❌ اطلاعاتی یافت نشد.")
+        return
+
+    text = f"🏭 *قیمت {product_name} در منطقه {region_name}*\n"
+    text += "━" * 25 + "\n\n"
+    
+    # لیست کردن کارخانه‌ها و قیمت‌ها
+    for factory_name, price in factories.items():
+        text += f"▪️ *{factory_name}:* {price} تومان\n"
+        
+    # دکمه بازگشت به مناطقِ همان محصول
+    keyboard = [[InlineKeyboardButton("🔙 بازگشت به مناطق", callback_data=f"fact_prod_{product_name}")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await query.edit_message_text(text, reply_markup=reply_markup, parse_mode='Markdown')
+
 MAIN_TEXT = (
     "🏭 *ربات تخصصی آهن و فولاد* 🏭\n\n"
     "📌 *محصولات تحت پوشش:*\n"
@@ -746,6 +835,11 @@ def main():
     app.add_handler(CallbackQueryHandler(factory_product, pattern="^fact_")) # مدیریت زیرمنوهای کارخانه
     app.add_handler(CallbackQueryHandler(rate,    pattern="^rate$"))
     app.add_handler(CallbackQueryHandler(back,    pattern="^back$"))
+    
+    # ثبت هندلرهای مربوط به قیمت کارخانه
+    application.add_handler(CallbackQueryHandler(factory_menu, pattern="^factory_menu_start$"))
+    application.add_handler(CallbackQueryHandler(factory_product_selected, pattern="^fact_prod_"))
+    application.add_handler(CallbackQueryHandler(factory_region_selected, pattern="^fact_reg_"))
 
     print("✅ ربات روشن شد")
     app.run_polling()
