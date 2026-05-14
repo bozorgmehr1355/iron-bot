@@ -17,10 +17,32 @@ RATE_FILE = "rates.json"
 PRICE_FILE = "prices.json"
 WORLD_PRICE_FILE = "world_prices.json"
 METALS_FILE = "metals_prices.json"
+FACTORY_PRICE_FILE = "factory_prices.json"  # فایل جدید برای قیمت کارخانه‌ها
 
 WAITING_VALUE = 1
 
 _file_lock = threading.Lock()
+
+# ========== داده‌های پیش‌فرض کارخانه‌ها ==========
+DEFAULT_FACTORY_DATA = {
+    "rebar": {
+        "📍 منطقه مرکز": {"ذوب آهن اصفهان": 26500, "کویر کاشان": 26800, "فولاد کویر": 26600},
+        "📍 منطقه شمال غرب": {"ظفر بناب": 25900, "فولاد میانه": 26100}
+    },
+    "billet": {
+        "📍 منطقه مرکز": {"فولاد اصفهان": 24500, "فولاد یزد": 24400},
+        "📍 منطقه شمال": {"فولاد قزوین": 22500}
+    },
+    "dri": {
+        "📍 کارخانجات مطرح": {"فولاد میانه": 14700, "فولاد نطنز": 14500, "فولاد کاویان": 14300}
+    },
+    "pellet": {
+        "📍 کارخانجات مطرح": {"گل گهر": 6400000, "چادرملو": 6300000}
+    },
+    "concentrate": {
+        "📍 کارخانجات مطرح": {"گل گهر": 4300000, "سنگ آهن مرکزی": 4600000}
+    }
+}
 
 # ========== ابزارها ==========
 def to_persian(num):
@@ -121,12 +143,9 @@ def update_all_prices():
 
 def update_world_prices():
     print(f"[{datetime.now().strftime('%H:%M')}] بروزرسانی قیمت‌های جهانی...")
-
-    # مقدار پیش‌فرض سنگ آهن 62% CFR چین
     iron_ore = 104.0
     source = "پیش‌فرض"
 
-    # دریافت سنگ آهن از metalpriceapi
     if METALPRICE_API_KEY:
         try:
             r = requests.get("https://api.metalpriceapi.com/v1/latest", params={
@@ -137,7 +156,6 @@ def update_world_prices():
                 data = r.json()
                 if data.get("success"):
                     rates = data.get("rates", {})
-                    # USDIRON = قیمت مستقیم دلار/تن
                     if rates.get("USDIRON") and rates["USDIRON"] > 0:
                         iron_ore = round(rates["USDIRON"], 1)
                         source = "MetalpriceAPI"
@@ -145,28 +163,22 @@ def update_world_prices():
         except Exception as e:
             print(f"خطای API سنگ آهن: {e}")
 
-    # ========== فرمول‌های محاسباتی بر اساس نسبت‌های تاریخی بازار ==========
-    # کنسانتره سنگ آهن (62% Fe)
-    con_north  = round(iron_ore, 1)                    # CFR شمال چین = قیمت پایه
-    con_south  = round(iron_ore + 1, 1)                # CFR جنوب چین = شمال + 1$
-    con_fob    = round(iron_ore - 19, 1)               # FOB خلیج فارس = شمال - 19$
+    con_north  = round(iron_ore, 1)
+    con_south  = round(iron_ore + 1, 1)
+    con_fob    = round(iron_ore - 19, 1)
 
-    # گندله (ضریب تاریخی ≈ 1.49 برابر کنسانتره)
     pel_north  = round(con_north * 1.49, 1)
     pel_south  = round(con_south * 1.49, 1)
     pel_fob    = round(con_fob * 1.49, 1)
 
-    # آهن اسفنجی DRI (ضریب ≈ 2.02 برابر گندله)
     dri_fob    = round(pel_fob * 2.02, 1)
     dri_north  = round(pel_north * 1.81, 1)
     dri_south  = round(pel_south * 1.81, 1)
 
-    # شمش فولادی (ضریب ≈ 2.4 برابر آهن اسفنجی FOB)
     bil_fob    = round(dri_fob * 2.4, 1)
     bil_north  = round(bil_fob * 1.08, 1)
     bil_south  = round(bil_fob * 1.07, 1)
 
-    # میلگرد (ضریب ≈ 1.15 برابر شمش)
     reb_fob    = round(bil_fob * 1.15, 1)
     reb_north  = round(bil_north * 1.15, 1)
     reb_south  = round(bil_south * 1.15, 1)
@@ -261,6 +273,9 @@ def load_metals():
         "gold": 4700, "silver": 33.5, "platinum": 2050, "palladium": 1480, "iron_ore": 105
     })
 
+def load_factory_prices():
+    return load_json(FACTORY_PRICE_FILE, DEFAULT_FACTORY_DATA)
+
 # ========== کیبوردها ==========
 def main_keyboard():
     return InlineKeyboardMarkup([
@@ -272,8 +287,21 @@ def main_keyboard():
         [InlineKeyboardButton("💱 نرخ ارز", callback_data="rate")]
     ])
 
+def factory_products_keyboard():
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("📏 میلگرد آجدار", callback_data="fact_rebar"),
+         InlineKeyboardButton("🔩 شمش فولادی", callback_data="fact_billet")],
+        [InlineKeyboardButton("🏭 آهن اسفنجی (DRI)", callback_data="fact_dri")],
+        [InlineKeyboardButton("🟤 گندله", callback_data="fact_pellet"),
+         InlineKeyboardButton("🪨 کنسانتره سنگ آهن", callback_data="fact_concentrate")],
+        [InlineKeyboardButton("🔙 بازگشت به منوی اصلی", callback_data="back")]
+    ])
+
 def back_button():
     return InlineKeyboardMarkup([[InlineKeyboardButton("🏠 بازگشت به منو", callback_data="back")]])
+
+def back_to_factory_keyboard():
+    return InlineKeyboardMarkup([[InlineKeyboardButton("🔙 بازگشت به لیست محصولات", callback_data="factory")]])
 
 MAIN_TEXT = (
     "🏭 *ربات تخصصی آهن و فولاد* 🏭\n\n"
@@ -358,31 +386,49 @@ async def free(update, context):
     text += f"📅 بروزرسانی: {to_persian(p.get('last_update', '')[:16])}"
     await update.callback_query.edit_message_text(text, reply_markup=back_button(), parse_mode="Markdown")
 
+# منوی واسط جدید قیمت کارخانه
 async def factory(update, context):
     await update.callback_query.answer()
-    p = load_prices()
-    text = "🏭 *قیمت درب کارخانه* 🏭\n" + "━" * 35 + "\n\n"
-    text += "🔩 *شمش فولادی (تومان/کیلو)*\n"
-    text += f"   • فولاد اصفهان: *{format_number(p['billet'])}*\n"
-    text += f"   • فولاد یزد: *{format_number(p['billet']-100)}*\n"
-    text += f"   • فولاد قزوین: *{format_number(p['billet']-2000)}*\n\n"
-    text += "📏 *میلگرد (تومان/کیلو)*\n"
-    text += f"   • ذوب آهن اصفهان: *{format_number(p['rebar'])}*\n"
-    text += f"   • امیرکبیر کاشان: *{format_number(p['rebar']+1000)}*\n"
-    text += f"   • فولاد کاوه: *{format_number(p['rebar']-1000)}*\n\n"
-    text += "🏭 *آهن اسفنجی (تومان/کیلو)*\n"
-    text += f"   • فولاد میانه: *{format_number(p['dri']+600)}*\n"
-    text += f"   • فولاد نطنز: *{format_number(p['dri']+400)}*\n"
-    text += f"   • فولاد کاویان: *{format_number(p['dri']+200)}*\n\n"
-    text += "🟤 *گندله (تومان/تن)*\n"
-    text += f"   • گل گهر: *{format_number(p['pellet']-100000)}*\n"
-    text += f"   • چادرملو: *{format_number(p['pellet']-200000)}*\n\n"
-    text += "🪨 *کنسانتره (تومان/تن)*\n"
-    text += f"   • گل گهر: *{format_number(p['concentrate']-500000)}*\n"
-    text += f"   • سنگ آهن مرکزی: *{format_number(p['concentrate']-200000)}*\n"
-    text += "\n" + "━" * 35 + "\n"
-    text += f"📅 بروزرسانی: {to_persian(p.get('last_update', '')[:16])}"
-    await update.callback_query.edit_message_text(text, reply_markup=back_button(), parse_mode="Markdown")
+    text = (
+        "🏭 *قیمت درب کارخانه کارخانجات مطرح ایران*\n"
+        "━" * 35 + "\n\n"
+        "لطفاً محصول مورد نظر خود را برای مشاهده قیمت کارخانه‌ها انتخاب کنید:"
+    )
+    await update.callback_query.edit_message_text(text, reply_markup=factory_products_keyboard(), parse_mode="Markdown")
+
+# نمایش نهایی قیمت محصولات کارخانه‌ها به صورت تفکیک شده و داینامیک
+async def factory_product(update, context):
+    query = update.callback_query
+    await query.answer()
+    
+    product_key = query.data.split("_")[1]
+    
+    product_names = {
+        "rebar": "میلگرد آجدار", "billet": "شمش فولادی",
+        "dri": "آهن اسفنجی", "pellet": "گندله", "concentrate": "کنسانتره"
+    }
+    
+    unit = "تومان/تن" if product_key in ["pellet", "concentrate"] else "تومان/کیلو"
+    all_factory_data = load_factory_prices()
+    product_data = all_factory_data.get(product_key, {})
+    
+    now = to_persian(datetime.now().strftime('%Y/%m/%d - %H:%M'))
+    text = f"🏭 *قیمت درب کارخانه - {product_names.get(product_key, '')}*\n"
+    text += f"🔄 {now}\n" + "━" * 35 + "\n\n"
+    
+    if not product_data:
+        text += "❌ در حال حاضر داده‌ای برای این محصول ثبت نشده است.\n"
+    else:
+        for region, factories in product_data.items():
+            text += f"*{region}*\n"
+            for name, price in factories.items():
+                text += f"   • {name}: *{format_number(price)}* {unit}\n"
+            text += "\n"
+            
+    text += "━" * 35 + "\n"
+    text += "Base: _قیمت‌ها بدون احتساب هزینه حمل از کارخانه می‌باشد._"
+    
+    await query.edit_message_text(text, reply_markup=back_to_factory_keyboard(), parse_mode="Markdown")
 
 async def rate(update, context):
     await update.callback_query.answer()
@@ -601,7 +647,6 @@ async def receive_value(update, context):
 SCRAPER_SECRET = os.environ.get("SCRAPER_SECRET", "change_this_secret")
 
 async def push_prices(update, context):
-    """دستور مخفی برای دریافت قیمت از اسکرپر محلی"""
     if not is_admin(update):
         return
 
@@ -610,7 +655,6 @@ async def push_prices(update, context):
         return
 
     try:
-        # فرمت: /push_prices SECRET {"key": value, ...}
         if context.args[0] != SCRAPER_SECRET:
             await update.message.reply_text("❌ کلید اشتباه.")
             return
@@ -620,7 +664,6 @@ async def push_prices(update, context):
 
         updated = []
 
-        # قیمت‌های داخلی
         if "domestic" in data:
             d = load_prices()
             d.update(data["domestic"])
@@ -628,7 +671,6 @@ async def push_prices(update, context):
             save_json(PRICE_FILE, d)
             updated.append("قیمت داخلی ✅")
 
-        # قیمت‌های جهانی
         if "world" in data:
             w = load_world_prices()
             w.update(data["world"])
@@ -637,13 +679,19 @@ async def push_prices(update, context):
             save_json(WORLD_PRICE_FILE, w)
             updated.append("قیمت جهانی ✅")
 
-        # نرخ ارز
         if "rates" in data:
             r = load_rates()
             r.update(data["rates"])
             r["last_update"] = datetime.now().isoformat()
             save_json(RATE_FILE, r)
             updated.append("نرخ ارز ✅")
+
+        # امکان دریافت اطلاعات کارخانه‌ها به صورت ساختار یافته از موتور قیمت
+        if "factory" in data:
+            f_data = load_factory_prices()
+            f_data.update(data["factory"])
+            save_json(FACTORY_PRICE_FILE, f_data)
+            updated.append("قیمت کارخانه‌ها ✅")
 
         msg = "📥 *قیمت‌ها از اسکرپر دریافت شد:*\n" + "\n".join(updated)
         await update.message.reply_text(msg, parse_mode="Markdown")
@@ -683,6 +731,7 @@ def main():
     app.add_handler(CallbackQueryHandler(ice,     pattern="^ice$"))
     app.add_handler(CallbackQueryHandler(free,    pattern="^free$"))
     app.add_handler(CallbackQueryHandler(factory, pattern="^factory$"))
+    app.add_handler(CallbackQueryHandler(factory_product, pattern="^fact_")) # مدیریت زیرمنوهای کارخانه
     app.add_handler(CallbackQueryHandler(rate,    pattern="^rate$"))
     app.add_handler(CallbackQueryHandler(back,    pattern="^back$"))
 
