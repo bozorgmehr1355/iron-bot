@@ -56,7 +56,7 @@ def get_prices_from_text(text, min_p, max_p):
             continue
     return prices
 
-# ==================== اسکرپرها ====================
+# ==================== اسکرپر ====================
 def scrape_rebar():
     urls = [
         "https://ahanonline.com/product-category/میلگرد-آجدار/قیمت-میلگرد-آجدار/",
@@ -131,52 +131,45 @@ MAIN_TEXT = "🏭 ربات تخصصی آهن و فولاد 🏭\n\nلطفاً ی
 
 # ==================== هندلرها ====================
 async def start(update: Update, context):
-    await update.message.reply_text(MAIN_TEXT, reply_markup=main_keyboard(), parse_mode="HTML")
+    await update.message.reply_text(MAIN_TEXT, reply_markup=main_keyboard())
 
 async def button_handler(update: Update, context):
     query = update.callback_query
     await query.answer()
-
     data = query.data
 
     if data == "back":
-        await query.edit_message_text(MAIN_TEXT, reply_markup=main_keyboard(), parse_mode="HTML")
+        await query.edit_message_text(MAIN_TEXT, reply_markup=main_keyboard())
         return
 
     if data == "rate":
         rates = update_rates()
-        text = (
-            f"💱 نرخ ارز آزاد\n\n"
-            f"دلار آزاد: {format_number(rates.get('free', 
+        text = "💱 نرخ ارز آزاد\n\n" \
+               f"دلار آزاد: {format_number(rates.get('free', 177400))} تومان\n" \
+               f"آخرین بروزرسانی: {rates.get('last_update', 
 
-177400))} تومان\n"
-            f"آخرین بروزرسانی: {rates.get('last_update', 'نامشخص')[:16]}"
-        )
+'نامشخص')[:16]}"
 
     elif data == "free":
         prices = load_json(PRICE_FILE, {})
-        text = (
-            f"🔄 بازار آزاد\n\n"
-            f"میلگرد: {format_number(prices.get('rebar', 58000))} تومان\n"
-            f"آخرین بروزرسانی: {prices.get('last_update', 'نامشخص')[:16]}"
-        )
+        text = "🔄 بازار آزاد\n\n" \
+               f"میلگرد: {format_number(prices.get('rebar', 58000))} تومان\n" \
+               f"آخرین بروزرسانی: {prices.get('last_update', 'نامشخص')[:16]}"
 
     else:
         text = "این بخش هنوز کامل پیاده‌سازی نشده است.\nبه زودی اضافه خواهد شد."
 
-    await query.edit_message_text(text, reply_markup=back_button(), parse_mode="HTML")
+    await query.edit_message_text(text, reply_markup=back_button())
 
-# ==================== اجرای ربات ====================
+# ==================== اجرا ====================
 def main():
     if not TOKEN:
         print("❌ BOT_TOKEN تنظیم نشده!")
         return
 
-    # شروع اولیه
     update_all_prices()
     update_rates()
 
-    # لوپ‌های بروزرسانی
     _run_loop(update_all_prices, 7200)   # هر ۲ ساعت
     _run_loop(update_rates, 900)         # هر ۱۵ دقیقه
 
