@@ -58,8 +58,10 @@ def get_prices_from_text(text, min_p, max_p):
 
 # ==================== اسکرپرها ====================
 def scrape_rebar():
-    urls = ["https://ahanonline.com/product-category/میلگرد-آجدار/قیمت-میلگرد-آجدار/",
-            "https://ahanonline.com/product-category/میلگرد/"]
+    urls = [
+        "https://ahanonline.com/product-category/میلگرد-آجدار/قیمت-میلگرد-آجدار/",
+        "https://ahanonline.com/product-category/میلگرد/"
+    ]
     all_prices = []
     for url in urls:
         try:
@@ -73,9 +75,7 @@ def scrape_rebar():
             continue
     return int(sum(all_prices)/len(all_prices)) if all_prices else None
 
-# ==================== بروزرسانی 
-
-====================
+# ==================== بروزرسانی ====================
 def update_all_prices():
     current = load_json(PRICE_FILE, {"rebar": 58000, "billet": 42500, "dri": 14166})
     rebar = scrape_rebar()
@@ -100,8 +100,8 @@ def update_rates():
     current["free"] = free
     current["last_update"] = datetime.now().isoformat()
     save_json(RATE_FILE, current)
-    return current
 
+    return current
 
 def _run_loop(func, interval):
     def loop():
@@ -110,7 +110,7 @@ def _run_loop(func, interval):
             try:
                 func()
             except Exception as e:
-                print(f"خطا: {e}")
+                print(f"خطا در {func.__name__}: {e}")
     threading.Thread(target=loop, daemon=True).start()
 
 # ==================== کیبوردها ====================
@@ -124,9 +124,8 @@ def main_keyboard():
     ])
 
 def back_button():
-    return 
 
-InlineKeyboardMarkup([[InlineKeyboardButton("🏠 بازگشت به منو", callback_data="back")]])
+    return InlineKeyboardMarkup([[InlineKeyboardButton("🏠 بازگشت به منو", callback_data="back")]])
 
 MAIN_TEXT = "🏭 ربات تخصصی آهن و فولاد 🏭\n\nلطفاً یکی از گزینه‌ها را انتخاب کنید:"
 
@@ -146,18 +145,22 @@ async def button_handler(update: Update, context):
 
     if data == "rate":
         rates = update_rates()
-        text = f"💱 نرخ ارز آزاد\n\n" \
-               f"دلار آزاد: {format_number(rates.get('free', 177400))} تومان\n" \
-               f"آخرین بروزرسانی: {rates.get('last_update', 
+        text = (
+            f"💱 نرخ ارز آزاد\n\n"
+            f"دلار آزاد: {format_number(rates.get('free', 
 
-'نامشخص')[:16]}"
-    
+177400))} تومان\n"
+            f"آخرین بروزرسانی: {rates.get('last_update', 'نامشخص')[:16]}"
+        )
+
     elif data == "free":
         prices = load_json(PRICE_FILE, {})
-        text = f"🔄 بازار آزاد\n\n" \
-               f"میلگرد: {format_number(prices.get('rebar', 58000))} تومان\n" \
-               f"آخرین بروزرسانی: {prices.get('last_update', 'نامشخص')[:16]}"
-    
+        text = (
+            f"🔄 بازار آزاد\n\n"
+            f"میلگرد: {format_number(prices.get('rebar', 58000))} تومان\n"
+            f"آخرین بروزرسانی: {prices.get('last_update', 'نامشخص')[:16]}"
+        )
+
     else:
         text = "این بخش هنوز کامل پیاده‌سازی نشده است.\nبه زودی اضافه خواهد شد."
 
@@ -169,12 +172,13 @@ def main():
         print("❌ BOT_TOKEN تنظیم نشده!")
         return
 
-    # شروع بروزرسانی‌ها
+    # شروع اولیه
     update_all_prices()
     update_rates()
+
+    # لوپ‌های بروزرسانی
     _run_loop(update_all_prices, 7200)   # هر ۲ ساعت
     _run_loop(update_rates, 900)         # هر ۱۵ دقیقه
-
 
     app = Application.builder().token(TOKEN).build()
 
@@ -183,6 +187,7 @@ def main():
 
     print("✅ ربات با موفقیت شروع شد")
     app.run_polling()
+
 
 if __name__ == "__main__":
     main()
