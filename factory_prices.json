@@ -1,0 +1,51 @@
+{
+  "rebar": {
+    "name_fa": "میلگرد",
+    "regions": {
+      "center": {
+        "name_fa": "مرکز (اصفهان، یزد و...)",
+        "factories": [
+          {
+            "id": "zobahan",
+            "name": "ذوب آهن اصفهان",
+            "price": 25500,
+            "last_update": "1405/02/24 10:30"
+          },
+          {
+            "id": "kavir",
+            "name": "کویر کاشان",
+            "price": 25200,
+            "last_update": "1405/02/24 11:00"
+          }
+        ]
+      },
+      "north": {
+        "name_fa": "شمال (گیلان، مازندران و...)",
+        "factories": [
+          {
+            "id": "gilan",
+            "name": "حسن رود گیلان",
+            "price": 26000,
+            "last_update": "1405/02/24 09:45"
+          }
+        ]
+      }
+    }
+  },
+  "beam": {
+    "name_fa": "تیرآهن",
+    "regions": {
+      "center": {
+        "name_fa": "مرکز",
+        "factories": [
+          {
+            "id": "zobahan_beam",
+            "name": "ذوب آهن اصفهان",
+            "price": 28000,
+            "last_update": "1405/02/24 10:30"
+          }
+        ]
+      }
+    }
+  }
+}
