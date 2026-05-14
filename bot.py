@@ -389,12 +389,20 @@ async def free(update, context):
 # منوی واسط جدید قیمت کارخانه
 async def factory(update, context):
     await update.callback_query.answer()
-    text = (
-        "🏭 *قیمت درب کارخانه کارخانجات مطرح ایران*\n"
-        "━" * 35 + "\n\n"
-        "لطفاً محصول مورد نظر خود را برای مشاهده قیمت کارخانه‌ها انتخاب کنید:"
+    
+    # ساخت متن به صورت خوانا و بدون تداخل عملگرها
+    title = "🏭 *قیمت درب کارخانه کارخانجات مطرح ایران*\n"
+    separator = "━" * 35 + "\n\n"
+    prompt = "لطفاً محصول مورد نظر خود را برای مشاهده قیمت کارخانه‌ها انتخاب کنید:"
+    
+    text = title + separator + prompt
+    
+    # ارسال پیام با کیبورد مربوطه
+    await update.callback_query.edit_message_text(
+        text=text,
+        reply_markup=factory_products_keyboard(),
+        parse_mode="Markdown"
     )
-    await update.callback_query.edit_message_text(text, reply_markup=factory_products_keyboard(), parse_mode="Markdown")
 
 # نمایش نهایی قیمت محصولات کارخانه‌ها به صورت تفکیک شده و داینامیک
 async def factory_product(update, context):
